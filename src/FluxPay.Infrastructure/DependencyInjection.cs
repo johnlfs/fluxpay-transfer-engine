@@ -1,5 +1,7 @@
+using FluxPay.Application.Abstractions.Messaging;
 using FluxPay.Application.Abstractions.Persistence;
 using FluxPay.Infrastructure.Persistence;
+using FluxPay.Infrastructure.Persistence.Outbox;
 using FluxPay.Infrastructure.Persistence.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -22,7 +24,8 @@ public static class DependencyInjection
         services.AddDbContext<FluxPayDbContext>(
             options =>
             {
-                options.UseNpgsql(connectionString);
+                options.UseNpgsql(
+                    connectionString);
             });
 
         services.AddScoped<
@@ -40,6 +43,10 @@ public static class DependencyInjection
         services.AddScoped<
             ITransferIdempotencyRepository,
             EfTransferIdempotencyRepository>();
+
+        services.AddScoped<
+            IOutboxWriter,
+            EfOutboxWriter>();
 
         services.AddScoped<
             IUnitOfWork,

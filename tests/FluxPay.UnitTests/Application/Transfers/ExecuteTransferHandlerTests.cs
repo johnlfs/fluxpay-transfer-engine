@@ -1,5 +1,7 @@
+using FluxPay.Application.Abstractions.Messaging;
 using FluxPay.Application.Abstractions.Persistence;
 using FluxPay.Application.Accounts.Exceptions;
+using FluxPay.Application.Transfers.Events;
 using FluxPay.Application.Transfers.Exceptions;
 using FluxPay.Application.Transfers.ExecuteTransfer;
 using FluxPay.Domain.Accounts;
@@ -22,7 +24,7 @@ public sealed class ExecuteTransferHandlerTests
             TimeSpan.Zero);
 
     [Fact]
-    public async Task HandleAsync_WithValidTransfer_MovesMoneyAndCompletesIdempotencyRecord()
+    public async Task HandleAsync_WithValidTransfer_MovesMoneyCompletesIdempotencyAndCreatesOutboxEvent()
     {
         var sourceAccount =
             CreateAccount(
@@ -49,6 +51,9 @@ public sealed class ExecuteTransferHandlerTests
             new FakeTransferIdempotencyRepository(
                 TransferIdempotencyClaimStatus.Acquired);
 
+        var outboxWriter =
+            new FakeOutboxWriter();
+
         var unitOfWork =
             new FakeUnitOfWork();
 
@@ -61,7 +66,8 @@ public sealed class ExecuteTransferHandlerTests
                 transferRepository,
                 idempotencyRepository,
                 unitOfWork,
-                transactionManager);
+                transactionManager,
+                outboxWriter);
 
         var result =
             await handler.HandleAsync(
@@ -116,10 +122,62 @@ public sealed class ExecuteTransferHandlerTests
         Assert.Equal(
             1,
             transactionManager.ExecuteCallCount);
+
+        Assert.Equal(
+            1,
+            outboxWriter.AddCallCount);
+
+        var outboxMessage =
+            Assert.Single(
+                outboxWriter.AddedMessages);
+
+        Assert.NotEqual(
+            Guid.Empty,
+            outboxMessage.EventId);
+
+        Assert.Equal(
+            TransferCompletedIntegrationEvent.EventType,
+            outboxMessage.EventType);
+
+        Assert.Equal(
+            result.Id,
+            outboxMessage.AggregateId);
+
+        Assert.Equal(
+            FixedUtcNow,
+            outboxMessage.OccurredAt);
+
+        var payload =
+            Assert.IsType<TransferCompletedIntegrationEvent>(
+                outboxMessage.Payload);
+
+        Assert.Equal(
+            outboxMessage.EventId,
+            payload.EventId);
+
+        Assert.Equal(
+            result.Id,
+            payload.TransferId);
+
+        Assert.Equal(
+            sourceAccount.Id,
+            payload.SourceAccountId);
+
+        Assert.Equal(
+            destinationAccount.Id,
+            payload.DestinationAccountId);
+
+        Assert.Equal(
+            250.00m,
+            payload.Amount);
+
+        Assert.Equal(
+            FixedUtcNow,
+            payload.OccurredAt);
     }
 
     [Fact]
-    public async Task HandleAsync_WhenRequestWasAlreadyCompleted_ReturnsExistingTransferAsReplay()
+    public async Task HandleAsync_WhenRequestWasAlreadyCompleted_ReturnsExistingTransferAsReplayWithoutCreatingOutboxEvent()
     {
         var sourceAccount =
             CreateAccount(
@@ -155,6 +213,9 @@ public sealed class ExecuteTransferHandlerTests
                 TransferIdempotencyClaimStatus.Completed,
                 existingTransfer.Id);
 
+        var outboxWriter =
+            new FakeOutboxWriter();
+
         var unitOfWork =
             new FakeUnitOfWork();
 
@@ -167,7 +228,8 @@ public sealed class ExecuteTransferHandlerTests
                 transferRepository,
                 idempotencyRepository,
                 unitOfWork,
-                transactionManager);
+                transactionManager,
+                outboxWriter);
 
         var result =
             await handler.HandleAsync(
@@ -206,6 +268,10 @@ public sealed class ExecuteTransferHandlerTests
 
         Assert.Equal(
             0,
+            outboxWriter.AddCallCount);
+
+        Assert.Equal(
+            0,
             unitOfWork.SaveChangesCallCount);
 
         Assert.Equal(
@@ -214,7 +280,7 @@ public sealed class ExecuteTransferHandlerTests
     }
 
     [Fact]
-    public async Task HandleAsync_WhenIdempotencyKeyHasDifferentPayload_ThrowsConflictBeforeAccountLock()
+    public async Task HandleAsync_WhenIdempotencyKeyHasDifferentPayload_ThrowsConflictBeforeAccountLockAndDoesNotCreateOutboxEvent()
     {
         var sourceAccount =
             CreateAccount(
@@ -241,6 +307,9 @@ public sealed class ExecuteTransferHandlerTests
             new FakeTransferIdempotencyRepository(
                 TransferIdempotencyClaimStatus.Conflict);
 
+        var outboxWriter =
+            new FakeOutboxWriter();
+
         var unitOfWork =
             new FakeUnitOfWork();
 
@@ -253,7 +322,8 @@ public sealed class ExecuteTransferHandlerTests
                 transferRepository,
                 idempotencyRepository,
                 unitOfWork,
-                transactionManager);
+                transactionManager,
+                outboxWriter);
 
         var exception =
             await Assert.ThrowsAsync<IdempotencyKeyConflictException>(
@@ -283,11 +353,15 @@ public sealed class ExecuteTransferHandlerTests
 
         Assert.Equal(
             0,
+            outboxWriter.AddCallCount);
+
+        Assert.Equal(
+            0,
             unitOfWork.SaveChangesCallCount);
     }
 
     [Fact]
-    public async Task HandleAsync_WhenSourceAccountDoesNotExist_ThrowsAndDoesNotPersist()
+    public async Task HandleAsync_WhenSourceAccountDoesNotExist_ThrowsAndDoesNotPersistOrCreateOutboxEvent()
     {
         var destinationAccount =
             CreateAccount(
@@ -304,6 +378,9 @@ public sealed class ExecuteTransferHandlerTests
             new FakeTransferIdempotencyRepository(
                 TransferIdempotencyClaimStatus.Acquired);
 
+        var outboxWriter =
+            new FakeOutboxWriter();
+
         var unitOfWork =
             new FakeUnitOfWork();
 
@@ -314,7 +391,8 @@ public sealed class ExecuteTransferHandlerTests
                 transferRepository,
                 idempotencyRepository,
                 unitOfWork,
-                new FakeTransactionManager());
+                new FakeTransactionManager(),
+                outboxWriter);
 
         var exception =
             await Assert.ThrowsAsync<AccountNotFoundException>(
@@ -340,11 +418,15 @@ public sealed class ExecuteTransferHandlerTests
 
         Assert.Equal(
             0,
+            outboxWriter.AddCallCount);
+
+        Assert.Equal(
+            0,
             unitOfWork.SaveChangesCallCount);
     }
 
     [Fact]
-    public async Task HandleAsync_WhenDestinationAccountDoesNotExist_DoesNotDebitSource()
+    public async Task HandleAsync_WhenDestinationAccountDoesNotExist_DoesNotDebitSourceOrCreateOutboxEvent()
     {
         var sourceAccount =
             CreateAccount(
@@ -361,6 +443,9 @@ public sealed class ExecuteTransferHandlerTests
             new FakeTransferIdempotencyRepository(
                 TransferIdempotencyClaimStatus.Acquired);
 
+        var outboxWriter =
+            new FakeOutboxWriter();
+
         var unitOfWork =
             new FakeUnitOfWork();
 
@@ -371,7 +456,8 @@ public sealed class ExecuteTransferHandlerTests
                 transferRepository,
                 idempotencyRepository,
                 unitOfWork,
-                new FakeTransactionManager());
+                new FakeTransactionManager(),
+                outboxWriter);
 
         await Assert.ThrowsAsync<AccountNotFoundException>(
             () =>
@@ -396,11 +482,15 @@ public sealed class ExecuteTransferHandlerTests
 
         Assert.Equal(
             0,
+            outboxWriter.AddCallCount);
+
+        Assert.Equal(
+            0,
             unitOfWork.SaveChangesCallCount);
     }
 
     [Fact]
-    public async Task HandleAsync_WithInsufficientFunds_DoesNotPersistTransferOrCompleteIdempotency()
+    public async Task HandleAsync_WithInsufficientFunds_DoesNotPersistTransferCompleteIdempotencyOrCreateOutboxEvent()
     {
         var sourceAccount =
             CreateAccount(
@@ -419,6 +509,9 @@ public sealed class ExecuteTransferHandlerTests
             new FakeTransferIdempotencyRepository(
                 TransferIdempotencyClaimStatus.Acquired);
 
+        var outboxWriter =
+            new FakeOutboxWriter();
+
         var unitOfWork =
             new FakeUnitOfWork();
 
@@ -430,7 +523,8 @@ public sealed class ExecuteTransferHandlerTests
                 transferRepository,
                 idempotencyRepository,
                 unitOfWork,
-                new FakeTransactionManager());
+                new FakeTransactionManager(),
+                outboxWriter);
 
         var exception =
             await Assert.ThrowsAsync<InsufficientFundsException>(
@@ -468,11 +562,15 @@ public sealed class ExecuteTransferHandlerTests
 
         Assert.Equal(
             0,
+            outboxWriter.AddCallCount);
+
+        Assert.Equal(
+            0,
             unitOfWork.SaveChangesCallCount);
     }
 
     [Fact]
-    public async Task HandleAsync_WithSameSourceAndDestination_FailsBeforeTransaction()
+    public async Task HandleAsync_WithSameSourceAndDestination_FailsBeforeTransactionAndDoesNotCreateOutboxEvent()
     {
         var account =
             CreateAccount(
@@ -482,6 +580,9 @@ public sealed class ExecuteTransferHandlerTests
         var transactionManager =
             new FakeTransactionManager();
 
+        var outboxWriter =
+            new FakeOutboxWriter();
+
         var handler =
             CreateHandler(
                 new FakeTransferAccountRepository(
@@ -490,7 +591,8 @@ public sealed class ExecuteTransferHandlerTests
                 new FakeTransferIdempotencyRepository(
                     TransferIdempotencyClaimStatus.Acquired),
                 new FakeUnitOfWork(),
-                transactionManager);
+                transactionManager,
+                outboxWriter);
 
         await Assert.ThrowsAsync<DomainValidationException>(
             () =>
@@ -504,10 +606,14 @@ public sealed class ExecuteTransferHandlerTests
         Assert.Equal(
             0,
             transactionManager.ExecuteCallCount);
+
+        Assert.Equal(
+            0,
+            outboxWriter.AddCallCount);
     }
 
     [Fact]
-    public async Task HandleAsync_WithEmptyIdempotencyKey_FailsBeforeTransaction()
+    public async Task HandleAsync_WithEmptyIdempotencyKey_FailsBeforeTransactionAndDoesNotCreateOutboxEvent()
     {
         var source =
             CreateAccount(
@@ -522,6 +628,9 @@ public sealed class ExecuteTransferHandlerTests
         var transactionManager =
             new FakeTransactionManager();
 
+        var outboxWriter =
+            new FakeOutboxWriter();
+
         var handler =
             CreateHandler(
                 new FakeTransferAccountRepository(
@@ -531,7 +640,8 @@ public sealed class ExecuteTransferHandlerTests
                 new FakeTransferIdempotencyRepository(
                     TransferIdempotencyClaimStatus.Acquired),
                 new FakeUnitOfWork(),
-                transactionManager);
+                transactionManager,
+                outboxWriter);
 
         var exception =
             await Assert.ThrowsAsync<DomainValidationException>(
@@ -550,6 +660,10 @@ public sealed class ExecuteTransferHandlerTests
         Assert.Equal(
             0,
             transactionManager.ExecuteCallCount);
+
+        Assert.Equal(
+            0,
+            outboxWriter.AddCallCount);
     }
 
     private static ExecuteTransferHandler CreateHandler(
@@ -557,12 +671,15 @@ public sealed class ExecuteTransferHandlerTests
         ITransferRepository transferRepository,
         ITransferIdempotencyRepository idempotencyRepository,
         IUnitOfWork unitOfWork,
-        ITransactionManager transactionManager)
+        ITransactionManager transactionManager,
+        IOutboxWriter? outboxWriter = null)
     {
         return new ExecuteTransferHandler(
             accountRepository,
             transferRepository,
             idempotencyRepository,
+            outboxWriter
+                ?? new FakeOutboxWriter(),
             unitOfWork,
             transactionManager,
             new FixedTimeProvider(
@@ -722,6 +839,44 @@ public sealed class ExecuteTransferHandlerTests
             return Task.CompletedTask;
         }
     }
+
+    private sealed class FakeOutboxWriter
+        : IOutboxWriter
+    {
+        public int AddCallCount { get; private set; }
+
+        public List<RecordedOutboxMessage> AddedMessages { get; } =
+            [];
+
+        public Task AddAsync<TPayload>(
+            Guid eventId,
+            string eventType,
+            Guid aggregateId,
+            TPayload payload,
+            DateTimeOffset occurredAt,
+            CancellationToken cancellationToken = default)
+            where TPayload : class
+        {
+            AddCallCount++;
+
+            AddedMessages.Add(
+                new RecordedOutboxMessage(
+                    eventId,
+                    eventType,
+                    aggregateId,
+                    payload,
+                    occurredAt));
+
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed record RecordedOutboxMessage(
+        Guid EventId,
+        string EventType,
+        Guid AggregateId,
+        object Payload,
+        DateTimeOffset OccurredAt);
 
     private sealed class FakeUnitOfWork
         : IUnitOfWork

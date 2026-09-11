@@ -1,5 +1,7 @@
+using FluxPay.Application.Abstractions.Messaging;
 using FluxPay.Application.Abstractions.Persistence;
 using FluxPay.Application.Accounts.Exceptions;
+using FluxPay.Application.Transfers.Events;
 using FluxPay.Application.Transfers.Exceptions;
 using FluxPay.Domain.Common;
 using FluxPay.Domain.Transfers;
@@ -12,6 +14,7 @@ public sealed class ExecuteTransferHandler
     private readonly ITransferAccountRepository _accountRepository;
     private readonly ITransferRepository _transferRepository;
     private readonly ITransferIdempotencyRepository _idempotencyRepository;
+    private readonly IOutboxWriter _outboxWriter;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ITransactionManager _transactionManager;
     private readonly TimeProvider _timeProvider;
@@ -20,6 +23,7 @@ public sealed class ExecuteTransferHandler
         ITransferAccountRepository accountRepository,
         ITransferRepository transferRepository,
         ITransferIdempotencyRepository idempotencyRepository,
+        IOutboxWriter outboxWriter,
         IUnitOfWork unitOfWork,
         ITransactionManager transactionManager,
         TimeProvider timeProvider)
@@ -32,6 +36,9 @@ public sealed class ExecuteTransferHandler
 
         _idempotencyRepository =
             idempotencyRepository;
+
+        _outboxWriter =
+            outboxWriter;
 
         _unitOfWork =
             unitOfWork;
@@ -149,8 +156,25 @@ public sealed class ExecuteTransferHandler
                 transfer.Complete(
                     occurredAt);
 
+                var integrationEvent =
+                    new TransferCompletedIntegrationEvent(
+                        Guid.NewGuid(),
+                        transfer.Id,
+                        transfer.SourceAccountId,
+                        transfer.DestinationAccountId,
+                        transfer.Amount.Amount,
+                        occurredAt);
+
                 await _transferRepository.AddAsync(
                     transfer,
+                    transactionCancellationToken);
+
+                await _outboxWriter.AddAsync(
+                    integrationEvent.EventId,
+                    TransferCompletedIntegrationEvent.EventType,
+                    transfer.Id,
+                    integrationEvent,
+                    integrationEvent.OccurredAt,
                     transactionCancellationToken);
 
                 await _unitOfWork.SaveChangesAsync(

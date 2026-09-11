@@ -1,10 +1,12 @@
 using System.Collections.Concurrent;
+using FluxPay.Application.Transfers.Events;
 using FluxPay.Application.Transfers.ExecuteTransfer;
 using FluxPay.Domain.Accounts;
 using FluxPay.Domain.Transfers;
 using FluxPay.Domain.ValueObjects;
 using FluxPay.Infrastructure.Persistence;
 using FluxPay.Infrastructure.Persistence.Idempotency;
+using FluxPay.Infrastructure.Persistence.Outbox;
 using FluxPay.Infrastructure.Persistence.Repositories;
 using FluxPay.IntegrationTests.Infrastructure;
 using Microsoft.EntityFrameworkCore;
@@ -34,7 +36,7 @@ public sealed class TransferIdempotencyConcurrencyIntegrationTests
     }
 
     [Fact]
-    public async Task ExecuteTransfer_WithOneHundredConcurrentRequestsUsingSameIdempotencyKey_ExecutesExactlyOnce()
+    public async Task ExecuteTransfer_WithOneHundredConcurrentRequestsUsingSameKey_ExecutesOnceAndCreatesOneOutboxMessage()
     {
         var accounts =
             await SeedAccountsAsync();
@@ -179,7 +181,16 @@ public sealed class TransferIdempotencyConcurrencyIntegrationTests
                 .Where(
                     record =>
                         record.IdempotencyKey
-                            == idempotencyKey)
+                        == idempotencyKey)
+                .ToListAsync();
+
+        var outboxMessages =
+            await verificationContext.OutboxMessages
+                .AsNoTracking()
+                .Where(
+                    message =>
+                        message.EventType
+                        == TransferCompletedIntegrationEvent.EventType)
                 .ToListAsync();
 
         Assert.Equal(
@@ -229,6 +240,28 @@ public sealed class TransferIdempotencyConcurrencyIntegrationTests
 
         Assert.NotNull(
             idempotencyRecord.CompletedAt);
+
+        var outboxMessage =
+            Assert.Single(
+                outboxMessages);
+
+        Assert.Equal(
+            transfer.Id,
+            outboxMessage.AggregateId);
+
+        Assert.Equal(
+            TransferCompletedIntegrationEvent.EventType,
+            outboxMessage.EventType);
+
+        Assert.Null(
+            outboxMessage.PublishedAt);
+
+        Assert.Equal(
+            0,
+            outboxMessage.AttemptCount);
+
+        Assert.Null(
+            outboxMessage.LastError);
 
         Assert.All(
             results,
@@ -286,6 +319,9 @@ public sealed class TransferIdempotencyConcurrencyIntegrationTests
     private static ExecuteTransferHandler CreateHandler(
         FluxPayDbContext dbContext)
     {
+        var timeProvider =
+            TimeProvider.System;
+
         return new ExecuteTransferHandler(
             new EfTransferAccountRepository(
                 dbContext),
@@ -293,11 +329,14 @@ public sealed class TransferIdempotencyConcurrencyIntegrationTests
                 dbContext),
             new EfTransferIdempotencyRepository(
                 dbContext),
+            new EfOutboxWriter(
+                dbContext,
+                timeProvider),
             new EfUnitOfWork(
                 dbContext),
             new EfTransactionManager(
                 dbContext),
-            TimeProvider.System);
+            timeProvider);
     }
 
     private sealed record SeededAccounts(

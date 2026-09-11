@@ -51,6 +51,10 @@ public sealed class DatabaseBootstrapTests
             "20260911024503_AddTransferIdempotency",
             appliedMigrations);
 
+        Assert.Contains(
+            "20260911034810_AddOutboxMessages",
+            appliedMigrations);
+
         Assert.Empty(
             pendingMigrations);
     }
