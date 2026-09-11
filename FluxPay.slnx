@@ -4,6 +4,7 @@
     <Project Path="src/FluxPay.Application/FluxPay.Application.csproj" />
     <Project Path="src/FluxPay.Domain/FluxPay.Domain.csproj" />
     <Project Path="src/FluxPay.Infrastructure/FluxPay.Infrastructure.csproj" />
+    <Project Path="src/FluxPay.Migrator/FluxPay.Migrator.csproj" />
     <Project Path="src/FluxPay.Worker/FluxPay.Worker.csproj" />
   </Folder>
   <Folder Name="/tests/">

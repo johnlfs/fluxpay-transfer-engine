@@ -126,6 +126,75 @@ services:
     ports:
       - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
 
+  migrator:
+    image: fluxpay-migrator:local
+
+    build:
+      context: .
+      dockerfile: src/FluxPay.Migrator/Dockerfile
+
+    restart: "no"
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    environment:
+      FLUXPAY_DB_CONNECTION: "Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Include Error Detail=false"
+
+  api:
+    image: fluxpay-api:local
+
+    build:
+      context: .
+      dockerfile: src/FluxPay.Api/Dockerfile
+
+    restart: unless-stopped
+
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
+      otel-collector:
+        condition: service_started
+
+    environment:
+      FLUXPAY_DB_CONNECTION: "Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Include Error Detail=false"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+      ASPNETCORE_URLS: "http://+:8080"
+
+    ports:
+      - "127.0.0.1:${FLUXPAY_API_PORT:-5080}:8080"
+
+  worker:
+    image: fluxpay-worker:local
+
+    build:
+      context: .
+      dockerfile: src/FluxPay.Worker/Dockerfile
+
+    restart: unless-stopped
+
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+
+    environment:
+      FLUXPAY_DB_CONNECTION: "Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};Include Error Detail=false"
+
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      RABBITMQ_VHOST: ${RABBITMQ_VHOST}
+
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+
 volumes:
   postgres_data:
   rabbitmq_data:
