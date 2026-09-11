@@ -5,7 +5,8 @@ namespace FluxPay.Infrastructure.Persistence;
 
 public sealed class FluxPayDbContext : DbContext
 {
-    public FluxPayDbContext(DbContextOptions<FluxPayDbContext> options)
+    public FluxPayDbContext(
+        DbContextOptions<FluxPayDbContext> options)
         : base(options)
     {
     }
