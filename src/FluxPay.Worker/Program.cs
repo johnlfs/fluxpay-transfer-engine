@@ -2,11 +2,13 @@ using FluxPay.Application.Abstractions.Messaging;
 using FluxPay.Application.Messaging.Inbox;
 using FluxPay.Infrastructure;
 using FluxPay.Infrastructure.Messaging;
+using FluxPay.Infrastructure.Observability;
 using FluxPay.Infrastructure.Persistence.Outbox;
 using FluxPay.Worker;
 using FluxPay.Worker.Observability;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 
 static string RequiredEnvironmentVariable(
     string name)
@@ -200,6 +202,12 @@ builder.Services
                 .AddMeter(
                     WorkerMetrics.MeterName)
                 .AddRuntimeInstrumentation()
+                .AddOtlpExporter())
+    .WithTracing(
+        tracing =>
+            tracing
+                .AddSource(
+                    MessagingActivitySource.Name)
                 .AddOtlpExporter());
 
 builder.Services.AddHostedService<

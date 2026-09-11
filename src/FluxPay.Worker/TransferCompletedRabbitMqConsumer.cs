@@ -1,9 +1,11 @@
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using FluxPay.Application.Messaging.Inbox;
 using FluxPay.Application.Messaging.Retry;
 using FluxPay.Application.Transfers.Events;
 using FluxPay.Infrastructure.Messaging;
+using FluxPay.Infrastructure.Observability;
 using FluxPay.Worker.Observability;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
@@ -405,11 +407,19 @@ public sealed class TransferCompletedRabbitMqConsumer
         DeliveryEnvelope? envelope =
             null;
 
+        using var consumerActivity =
+            StartConsumerActivity(
+                eventArgs);
+
         try
         {
             envelope =
                 ValidateAndDeserialize(
                     eventArgs);
+
+            SetConsumerEnvelopeTags(
+                consumerActivity,
+                envelope);
 
             await using var scope =
                 _scopeFactory.CreateAsyncScope();
@@ -448,6 +458,9 @@ public sealed class TransferCompletedRabbitMqConsumer
                 cancellationToken:
                     CancellationToken.None);
 
+            consumerActivity?.SetStatus(
+                ActivityStatusCode.Ok);
+
             if (
                 result
                 == InboxProcessingStatus.Duplicate)
@@ -478,6 +491,16 @@ public sealed class TransferCompletedRabbitMqConsumer
         }
         catch (PermanentMessageException exception)
         {
+            consumerActivity?.SetStatus(
+                ActivityStatusCode.Error,
+                exception.Message);
+
+            consumerActivity?.SetTag(
+                "error.type",
+                exception
+                    .GetType()
+                    .FullName);
+
             _logger.LogError(
                 exception,
                 "Invalid transfer-completed delivery will be dead-lettered. DeliveryTag={DeliveryTag}.",
@@ -497,6 +520,16 @@ public sealed class TransferCompletedRabbitMqConsumer
         }
         catch (Exception exception)
         {
+            consumerActivity?.SetStatus(
+                ActivityStatusCode.Error,
+                exception.Message);
+
+            consumerActivity?.SetTag(
+                "error.type",
+                exception
+                    .GetType()
+                    .FullName);
+
             if (envelope is null)
             {
                 _logger.LogError(
@@ -634,6 +667,46 @@ public sealed class TransferCompletedRabbitMqConsumer
         ] =
             failedAttemptCount;
 
+        using var retryActivity =
+            MessagingActivitySource.Source.StartActivity(
+                $"{TransferCompletedIntegrationEvent.EventType} retry publish",
+                ActivityKind.Producer);
+
+        if (retryActivity is not null)
+        {
+            retryActivity.SetTag(
+                "messaging.system",
+                "rabbitmq");
+
+            retryActivity.SetTag(
+                "messaging.operation.type",
+                "publish");
+
+            retryActivity.SetTag(
+                "messaging.destination.name",
+                _consumerOptions.RetryExchangeName);
+
+            retryActivity.SetTag(
+                "messaging.message.id",
+                envelope.MessageId.ToString(
+                    "D"));
+
+            retryActivity.SetTag(
+                "fluxpay.event.type",
+                TransferCompletedIntegrationEvent.EventType);
+
+            retryActivity.SetTag(
+                "fluxpay.consumer.failed_attempt",
+                failedAttemptCount);
+
+            retryActivity.SetTag(
+                "fluxpay.retry.delay_seconds",
+                delay.TotalSeconds);
+        }
+
+        TraceContextHeaders.Inject(
+            headers);
+
         var properties =
             new BasicProperties
             {
@@ -664,19 +737,126 @@ public sealed class TransferCompletedRabbitMqConsumer
                     headers
             };
 
-        await _channel.BasicPublishAsync(
-            exchange:
-                _consumerOptions.RetryExchangeName,
-            routingKey:
-                retryRoutingKey,
-            mandatory:
-                true,
-            basicProperties:
-                properties,
-            body:
-                envelope.Body,
-            cancellationToken:
-                CancellationToken.None);
+        try
+        {
+            await _channel.BasicPublishAsync(
+                exchange:
+                    _consumerOptions.RetryExchangeName,
+                routingKey:
+                    retryRoutingKey,
+                mandatory:
+                    true,
+                basicProperties:
+                    properties,
+                body:
+                    envelope.Body,
+                cancellationToken:
+                    CancellationToken.None);
+
+            retryActivity?.SetStatus(
+                ActivityStatusCode.Ok);
+        }
+        catch (Exception exception)
+        {
+            retryActivity?.SetStatus(
+                ActivityStatusCode.Error,
+                exception.Message);
+
+            retryActivity?.SetTag(
+                "error.type",
+                exception
+                    .GetType()
+                    .FullName);
+
+            throw;
+        }
+    }
+
+    private Activity? StartConsumerActivity(
+        BasicDeliverEventArgs eventArgs)
+    {
+        var hasTraceParentHeader =
+            eventArgs.BasicProperties.Headers?
+                .ContainsKey(
+                    TraceContextHeaders.TraceParentHeaderName)
+            == true;
+
+        var hasParentContext =
+            TraceContextHeaders.TryExtract(
+                eventArgs.BasicProperties.Headers,
+                isRemote:
+                    true,
+                out var parentContext);
+
+        var activity =
+            hasParentContext
+                ? MessagingActivitySource.Source.StartActivity(
+                    $"{TransferCompletedIntegrationEvent.EventType} process",
+                    ActivityKind.Consumer,
+                    parentContext)
+                : MessagingActivitySource.Source.StartActivity(
+                    $"{TransferCompletedIntegrationEvent.EventType} process",
+                    ActivityKind.Consumer);
+
+        if (activity is null)
+        {
+            return null;
+        }
+
+        activity.SetTag(
+            "messaging.system",
+            "rabbitmq");
+
+        activity.SetTag(
+            "messaging.operation.type",
+            "process");
+
+        activity.SetTag(
+            "messaging.destination.name",
+            _consumerOptions.QueueName);
+
+        activity.SetTag(
+            "messaging.rabbitmq.delivery_tag",
+            eventArgs.DeliveryTag.ToString());
+
+        activity.SetTag(
+            "fluxpay.event.type",
+            TransferCompletedIntegrationEvent.EventType);
+
+        if (
+            hasTraceParentHeader
+            && !hasParentContext)
+        {
+            activity.SetTag(
+                "fluxpay.trace_context.invalid",
+                true);
+        }
+
+        return activity;
+    }
+
+    private static void SetConsumerEnvelopeTags(
+        Activity? activity,
+        DeliveryEnvelope envelope)
+    {
+        if (activity is null)
+        {
+            return;
+        }
+
+        activity.SetTag(
+            "messaging.message.id",
+            envelope.MessageId.ToString(
+                "D"));
+
+        activity.SetTag(
+            "fluxpay.transfer.id",
+            envelope.Event.TransferId.ToString(
+                "D"));
+
+        activity.SetTag(
+            "fluxpay.consumer.attempt",
+            envelope.CurrentAttempt);
     }
 
     private DeliveryEnvelope ValidateAndDeserialize(
