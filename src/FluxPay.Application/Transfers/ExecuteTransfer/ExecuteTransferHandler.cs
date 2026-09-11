@@ -105,7 +105,8 @@ public sealed class ExecuteTransferHandler
                     }
 
                     return ToResult(
-                        existingTransfer);
+                        existingTransfer,
+                        isReplay: true);
                 }
 
                 if (
@@ -162,13 +163,15 @@ public sealed class ExecuteTransferHandler
                     transactionCancellationToken);
 
                 return ToResult(
-                    transfer);
+                    transfer,
+                    isReplay: false);
             },
             cancellationToken);
     }
 
     private static ExecuteTransferResult ToResult(
-        Transfer transfer)
+        Transfer transfer,
+        bool isReplay)
     {
         return new ExecuteTransferResult(
             transfer.Id,
@@ -177,6 +180,7 @@ public sealed class ExecuteTransferHandler
             transfer.Amount.Amount,
             transfer.Status,
             transfer.CreatedAt,
-            transfer.FinalizedAt);
+            transfer.FinalizedAt,
+            isReplay);
     }
 }

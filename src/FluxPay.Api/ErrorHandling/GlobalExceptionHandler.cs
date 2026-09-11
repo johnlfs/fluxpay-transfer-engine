@@ -1,4 +1,5 @@
 using FluxPay.Application.Accounts.Exceptions;
+using FluxPay.Application.Transfers.Exceptions;
 using FluxPay.Domain.Common;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
@@ -12,7 +13,8 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
     public GlobalExceptionHandler(
         IProblemDetailsService problemDetailsService)
     {
-        _problemDetailsService = problemDetailsService;
+        _problemDetailsService =
+            problemDetailsService;
     }
 
     public async ValueTask<bool> TryHandleAsync(
@@ -23,12 +25,26 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
         var problemDetails =
             exception switch
             {
+                InvalidIdempotencyKeyHeaderException =>
+                    CreateProblemDetails(
+                        StatusCodes.Status400BadRequest,
+                        "Invalid idempotency key",
+                        exception.Message,
+                        "urn:fluxpay:error:invalid-idempotency-key"),
+
                 AccountNotFoundException =>
                     CreateProblemDetails(
                         StatusCodes.Status404NotFound,
                         "Account not found",
                         exception.Message,
                         "urn:fluxpay:error:account-not-found"),
+
+                TransferNotFoundException =>
+                    CreateProblemDetails(
+                        StatusCodes.Status404NotFound,
+                        "Transfer not found",
+                        exception.Message,
+                        "urn:fluxpay:error:transfer-not-found"),
 
                 AccountNumberAlreadyExistsException =>
                     CreateProblemDetails(
@@ -37,6 +53,20 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
                         exception.Message,
                         "urn:fluxpay:error:account-number-already-exists"),
 
+                IdempotencyKeyConflictException =>
+                    CreateProblemDetails(
+                        StatusCodes.Status409Conflict,
+                        "Idempotency key conflict",
+                        exception.Message,
+                        "urn:fluxpay:error:idempotency-key-conflict"),
+
+                InsufficientFundsException =>
+                    CreateProblemDetails(
+                        StatusCodes.Status422UnprocessableEntity,
+                        "Insufficient funds",
+                        exception.Message,
+                        "urn:fluxpay:error:insufficient-funds"),
+
                 DomainValidationException =>
                     CreateProblemDetails(
                         StatusCodes.Status400BadRequest,
@@ -44,7 +74,8 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
                         exception.Message,
                         "urn:fluxpay:error:domain-validation"),
 
-                _ => null
+                _ =>
+                    null
             };
 
         if (problemDetails is null)
@@ -65,9 +96,12 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
         return await _problemDetailsService.TryWriteAsync(
             new ProblemDetailsContext
             {
-                HttpContext = httpContext,
-                ProblemDetails = problemDetails,
-                Exception = exception
+                HttpContext =
+                    httpContext,
+                ProblemDetails =
+                    problemDetails,
+                Exception =
+                    exception
             });
     }
 
@@ -79,10 +113,14 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
     {
         return new ProblemDetails
         {
-            Status = status,
-            Title = title,
-            Detail = detail,
-            Type = type
+            Status =
+                status,
+            Title =
+                title,
+            Detail =
+                detail,
+            Type =
+                type
         };
     }
 }

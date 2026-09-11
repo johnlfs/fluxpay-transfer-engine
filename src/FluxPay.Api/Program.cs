@@ -1,6 +1,8 @@
 using FluxPay.Api.ErrorHandling;
 using FluxPay.Application.Accounts.CreateAccount;
 using FluxPay.Application.Accounts.GetAccount;
+using FluxPay.Application.Transfers.ExecuteTransfer;
+using FluxPay.Application.Transfers.GetTransfer;
 using FluxPay.Infrastructure;
 
 var builder =
@@ -29,6 +31,10 @@ builder.Services.AddInfrastructure(
 builder.Services.AddScoped<CreateAccountHandler>();
 
 builder.Services.AddScoped<GetAccountHandler>();
+
+builder.Services.AddScoped<ExecuteTransferHandler>();
+
+builder.Services.AddScoped<GetTransferHandler>();
 
 builder.Services.AddSingleton(
     TimeProvider.System);

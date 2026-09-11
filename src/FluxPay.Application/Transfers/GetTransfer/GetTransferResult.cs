@@ -1,13 +1,12 @@
 using FluxPay.Domain.Transfers;
 
-namespace FluxPay.Application.Transfers.ExecuteTransfer;
+namespace FluxPay.Application.Transfers.GetTransfer;
 
-public sealed record ExecuteTransferResult(
+public sealed record GetTransferResult(
     Guid Id,
     Guid SourceAccountId,
     Guid DestinationAccountId,
     decimal Amount,
     TransferStatus Status,
     DateTimeOffset CreatedAt,
-    DateTimeOffset? FinalizedAt,
-    bool IsReplay);
+    DateTimeOffset? FinalizedAt);

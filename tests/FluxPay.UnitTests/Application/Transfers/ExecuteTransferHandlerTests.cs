@@ -83,6 +83,9 @@ public sealed class ExecuteTransferHandlerTests
             TransferStatus.Completed,
             result.Status);
 
+        Assert.False(
+            result.IsReplay);
+
         Assert.Single(
             transferRepository.AddedTransfers);
 
@@ -116,7 +119,7 @@ public sealed class ExecuteTransferHandlerTests
     }
 
     [Fact]
-    public async Task HandleAsync_WhenRequestWasAlreadyCompleted_ReturnsExistingTransferWithoutMovingMoneyAgain()
+    public async Task HandleAsync_WhenRequestWasAlreadyCompleted_ReturnsExistingTransferAsReplay()
     {
         var sourceAccount =
             CreateAccount(
@@ -177,6 +180,9 @@ public sealed class ExecuteTransferHandlerTests
         Assert.Equal(
             existingTransfer.Id,
             result.Id);
+
+        Assert.True(
+            result.IsReplay);
 
         Assert.Equal(
             750.00m,
