@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/FluxPay.Api/FluxPay.Api.csproj" />
+    <Project Path="src/FluxPay.Application/FluxPay.Application.csproj" />
+    <Project Path="src/FluxPay.Domain/FluxPay.Domain.csproj" />
+    <Project Path="src/FluxPay.Infrastructure/FluxPay.Infrastructure.csproj" />
+    <Project Path="src/FluxPay.Worker/FluxPay.Worker.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/FluxPay.ArchitectureTests/FluxPay.ArchitectureTests.csproj" />
+    <Project Path="tests/FluxPay.IntegrationTests/FluxPay.IntegrationTests.csproj" />
+    <Project Path="tests/FluxPay.UnitTests/FluxPay.UnitTests.csproj" />
+  </Folder>
+</Solution>
