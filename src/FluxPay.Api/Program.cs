@@ -1,5 +1,6 @@
 using FluxPay.Api.ErrorHandling;
 using FluxPay.Api.Health;
+using FluxPay.Api.Observability;
 using FluxPay.Application.Accounts.CreateAccount;
 using FluxPay.Application.Accounts.GetAccount;
 using FluxPay.Application.Transfers.ExecuteTransfer;
@@ -7,6 +8,8 @@ using FluxPay.Application.Transfers.GetTransfer;
 using FluxPay.Infrastructure;
 using FluxPay.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
 
 var builder =
     WebApplication.CreateBuilder(
@@ -58,6 +61,31 @@ builder.Services
             [
                 "ready"
             ]);
+
+builder.Services
+    .AddOpenTelemetry()
+    .ConfigureResource(
+        resource =>
+            resource.AddService(
+                serviceName:
+                    "fluxpay-api",
+                serviceVersion:
+                    typeof(ApiMetrics)
+                        .Assembly
+                        .GetName()
+                        .Version?
+                        .ToString()))
+    .WithMetrics(
+        metrics =>
+            metrics
+                .AddMeter(
+                    ApiMetrics.MeterName)
+                .AddMeter(
+                    "Microsoft.AspNetCore.Hosting")
+                .AddMeter(
+                    "Microsoft.AspNetCore.Server.Kestrel")
+                .AddRuntimeInstrumentation()
+                .AddOtlpExporter());
 
 var app =
     builder.Build();

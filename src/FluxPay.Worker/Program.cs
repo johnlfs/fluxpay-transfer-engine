@@ -4,6 +4,9 @@ using FluxPay.Infrastructure;
 using FluxPay.Infrastructure.Messaging;
 using FluxPay.Infrastructure.Persistence.Outbox;
 using FluxPay.Worker;
+using FluxPay.Worker.Observability;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
 
 static string RequiredEnvironmentVariable(
     string name)
@@ -177,6 +180,27 @@ builder.Services.AddScoped<
 
 builder.Services.AddScoped<
     InboxMessageProcessor>();
+
+builder.Services
+    .AddOpenTelemetry()
+    .ConfigureResource(
+        resource =>
+            resource.AddService(
+                serviceName:
+                    "fluxpay-worker",
+                serviceVersion:
+                    typeof(WorkerMetrics)
+                        .Assembly
+                        .GetName()
+                        .Version?
+                        .ToString()))
+    .WithMetrics(
+        metrics =>
+            metrics
+                .AddMeter(
+                    WorkerMetrics.MeterName)
+                .AddRuntimeInstrumentation()
+                .AddOtlpExporter());
 
 builder.Services.AddHostedService<
     Worker>();
