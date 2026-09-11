@@ -1,5 +1,7 @@
+using System.Text;
 using System.Text.Json;
 using FluxPay.Application.Messaging.Inbox;
+using FluxPay.Application.Messaging.Retry;
 using FluxPay.Application.Transfers.Events;
 using FluxPay.Infrastructure.Messaging;
 using RabbitMQ.Client;
@@ -10,6 +12,9 @@ namespace FluxPay.Worker;
 public sealed class TransferCompletedRabbitMqConsumer
     : BackgroundService
 {
+    private const string RetryAttemptHeaderName =
+        "x-fluxpay-attempt";
+
     private static readonly JsonSerializerOptions SerializerOptions =
         new(
             JsonSerializerDefaults.Web);
@@ -127,10 +132,17 @@ public sealed class TransferCompletedRabbitMqConsumer
                 .CreateConnectionAsync(
                     cancellationToken);
 
+        var channelOptions =
+            new CreateChannelOptions(
+                publisherConfirmationsEnabled:
+                    true,
+                publisherConfirmationTrackingEnabled:
+                    true);
+
         _channel =
             await _connection.CreateChannelAsync(
-                cancellationToken:
-                    cancellationToken);
+                channelOptions,
+                cancellationToken);
 
         await DeclareTopologyAsync(
             cancellationToken);
@@ -188,6 +200,22 @@ public sealed class TransferCompletedRabbitMqConsumer
                 _rabbitMqOptions.ExchangeName,
             type:
                 ExchangeType.Topic,
+            durable:
+                true,
+            autoDelete:
+                false,
+            arguments:
+                null,
+            noWait:
+                false,
+            cancellationToken:
+                cancellationToken);
+
+        await _channel.ExchangeDeclareAsync(
+            exchange:
+                _consumerOptions.RetryExchangeName,
+            type:
+                ExchangeType.Direct,
             durable:
                 true,
             autoDelete:
@@ -290,6 +318,78 @@ public sealed class TransferCompletedRabbitMqConsumer
                 false,
             cancellationToken:
                 cancellationToken);
+
+        for (
+            var attemptCount = 1;
+            attemptCount
+                < ConsumerRetryPolicy.MaximumAttempts;
+            attemptCount++)
+        {
+            var delay =
+                ConsumerRetryPolicy.GetDelay(
+                    attemptCount);
+
+            var retryQueueName =
+                GetRetryQueueName(
+                    delay);
+
+            var retryRoutingKey =
+                GetRetryRoutingKey(
+                    delay);
+
+            var retryQueueArguments =
+                new Dictionary<string, object?>
+                {
+                    [
+                        "x-message-ttl"
+                    ] =
+                        checked(
+                            (int)
+                                delay.TotalMilliseconds),
+
+                    [
+                        "x-dead-letter-exchange"
+                    ] =
+                        _rabbitMqOptions
+                            .ExchangeName,
+
+                    [
+                        "x-dead-letter-routing-key"
+                    ] =
+                        TransferCompletedIntegrationEvent
+                            .EventType
+                };
+
+            await _channel.QueueDeclareAsync(
+                queue:
+                    retryQueueName,
+                durable:
+                    true,
+                exclusive:
+                    false,
+                autoDelete:
+                    false,
+                arguments:
+                    retryQueueArguments,
+                noWait:
+                    false,
+                cancellationToken:
+                    cancellationToken);
+
+            await _channel.QueueBindAsync(
+                queue:
+                    retryQueueName,
+                exchange:
+                    _consumerOptions.RetryExchangeName,
+                routingKey:
+                    retryRoutingKey,
+                arguments:
+                    null,
+                noWait:
+                    false,
+                cancellationToken:
+                    cancellationToken);
+        }
     }
 
     private async Task HandleDeliveryAsync(
@@ -301,9 +401,12 @@ public sealed class TransferCompletedRabbitMqConsumer
             return;
         }
 
+        DeliveryEnvelope? envelope =
+            null;
+
         try
         {
-            var envelope =
+            envelope =
                 ValidateAndDeserialize(
                     eventArgs);
 
@@ -324,12 +427,13 @@ public sealed class TransferCompletedRabbitMqConsumer
                         cancellationToken.ThrowIfCancellationRequested();
 
                         _logger.LogInformation(
-                            "Processing transfer-completed event. MessageId={MessageId}, TransferId={TransferId}, SourceAccountId={SourceAccountId}, DestinationAccountId={DestinationAccountId}, Amount={Amount}.",
+                            "Processing transfer-completed event. MessageId={MessageId}, TransferId={TransferId}, SourceAccountId={SourceAccountId}, DestinationAccountId={DestinationAccountId}, Amount={Amount}, Attempt={Attempt}.",
                             envelope.MessageId,
                             envelope.Event.TransferId,
                             envelope.Event.SourceAccountId,
                             envelope.Event.DestinationAccountId,
-                            envelope.Event.Amount);
+                            envelope.Event.Amount,
+                            envelope.CurrentAttempt);
 
                         return Task.CompletedTask;
                     },
@@ -355,9 +459,10 @@ public sealed class TransferCompletedRabbitMqConsumer
             }
 
             _logger.LogInformation(
-                "Transfer-completed delivery processed and acknowledged. MessageId={MessageId}, TransferId={TransferId}.",
+                "Transfer-completed delivery processed and acknowledged. MessageId={MessageId}, TransferId={TransferId}, Attempt={Attempt}.",
                 envelope.MessageId,
-                envelope.Event.TransferId);
+                envelope.Event.TransferId,
+                envelope.CurrentAttempt);
         }
         catch (OperationCanceledException)
             when (eventArgs.CancellationToken.IsCancellationRequested)
@@ -380,21 +485,168 @@ public sealed class TransferCompletedRabbitMqConsumer
         }
         catch (Exception exception)
         {
-            var shouldRequeue =
-                !eventArgs.Redelivered;
+            if (envelope is null)
+            {
+                _logger.LogError(
+                    exception,
+                    "Transfer-completed delivery failed before a valid envelope was produced. DeliveryTag={DeliveryTag}.",
+                    eventArgs.DeliveryTag);
 
+                await TryNackAsync(
+                    eventArgs.DeliveryTag,
+                    requeue:
+                        false);
+
+                return;
+            }
+
+            await HandleTransientFailureAsync(
+                eventArgs,
+                envelope,
+                exception);
+        }
+    }
+
+    private async Task HandleTransientFailureAsync(
+        BasicDeliverEventArgs eventArgs,
+        DeliveryEnvelope envelope,
+        Exception processingException)
+    {
+        var attemptCount =
+            envelope.CurrentAttempt;
+
+        if (
+            ConsumerRetryPolicy.IsExhausted(
+                attemptCount))
+        {
             _logger.LogError(
-                exception,
-                "Transfer-completed delivery failed. DeliveryTag={DeliveryTag}, Redelivered={Redelivered}, Requeue={Requeue}.",
-                eventArgs.DeliveryTag,
-                eventArgs.Redelivered,
-                shouldRequeue);
+                processingException,
+                "Transfer-completed delivery exhausted retries and will be dead-lettered. MessageId={MessageId}, Attempt={Attempt}.",
+                envelope.MessageId,
+                attemptCount);
 
             await TryNackAsync(
                 eventArgs.DeliveryTag,
                 requeue:
-                    shouldRequeue);
+                    false);
+
+            return;
         }
+
+        var delay =
+            ConsumerRetryPolicy.GetDelay(
+                attemptCount);
+
+        try
+        {
+            await PublishRetryAsync(
+                eventArgs,
+                envelope,
+                attemptCount,
+                delay);
+
+            await _channel!.BasicAckAsync(
+                deliveryTag:
+                    eventArgs.DeliveryTag,
+                multiple:
+                    false,
+                cancellationToken:
+                    CancellationToken.None);
+
+            _logger.LogWarning(
+                processingException,
+                "Transfer-completed delivery failed and was scheduled for retry. MessageId={MessageId}, Attempt={Attempt}, RetryDelaySeconds={RetryDelaySeconds}.",
+                envelope.MessageId,
+                attemptCount,
+                delay.TotalSeconds);
+        }
+        catch (Exception retryException)
+        {
+            _logger.LogError(
+                retryException,
+                "Unable to schedule transfer-completed retry. Original delivery will be requeued. MessageId={MessageId}, Attempt={Attempt}.",
+                envelope.MessageId,
+                attemptCount);
+
+            await TryNackAsync(
+                eventArgs.DeliveryTag,
+                requeue:
+                    true);
+        }
+    }
+
+    private async Task PublishRetryAsync(
+        BasicDeliverEventArgs eventArgs,
+        DeliveryEnvelope envelope,
+        int failedAttemptCount,
+        TimeSpan delay)
+    {
+        if (
+            _channel is null
+            || !_channel.IsOpen)
+        {
+            throw new InvalidOperationException(
+                "RabbitMQ channel is not available for retry publishing.");
+        }
+
+        var retryRoutingKey =
+            GetRetryRoutingKey(
+                delay);
+
+        var headers =
+            eventArgs.BasicProperties.Headers is null
+                ? new Dictionary<string, object?>()
+                : new Dictionary<string, object?>(
+                    eventArgs.BasicProperties.Headers);
+
+        headers[
+            RetryAttemptHeaderName
+        ] =
+            failedAttemptCount;
+
+        var properties =
+            new BasicProperties
+            {
+                ContentType =
+                    eventArgs.BasicProperties.ContentType,
+
+                ContentEncoding =
+                    eventArgs.BasicProperties.ContentEncoding,
+
+                Persistent =
+                    true,
+
+                MessageId =
+                    envelope.MessageId.ToString(
+                        "D"),
+
+                CorrelationId =
+                    envelope.Event.TransferId.ToString(
+                        "D"),
+
+                Type =
+                    TransferCompletedIntegrationEvent.EventType,
+
+                AppId =
+                    "fluxpay",
+
+                Headers =
+                    headers
+            };
+
+        await _channel.BasicPublishAsync(
+            exchange:
+                _consumerOptions.RetryExchangeName,
+            routingKey:
+                retryRoutingKey,
+            mandatory:
+                true,
+            basicProperties:
+                properties,
+            body:
+                envelope.Body,
+            cancellationToken:
+                CancellationToken.None);
     }
 
     private DeliveryEnvelope ValidateAndDeserialize(
@@ -474,6 +726,10 @@ public sealed class TransferCompletedRabbitMqConsumer
             throw new PermanentMessageException(
                 "RabbitMQ CorrelationId must contain a valid non-empty UUID.");
         }
+
+        var previousFailedAttempts =
+            ReadPreviousFailedAttempts(
+                properties.Headers);
 
         TransferCompletedIntegrationEvent? integrationEvent;
 
@@ -562,10 +818,143 @@ public sealed class TransferCompletedRabbitMqConsumer
                 "OccurredAt is required.");
         }
 
+        var currentAttempt =
+            checked(
+                previousFailedAttempts
+                + 1);
+
+        if (
+            currentAttempt
+            > ConsumerRetryPolicy.MaximumAttempts)
+        {
+            throw new PermanentMessageException(
+                $"Retry attempt '{currentAttempt}' exceeds the maximum supported attempt count '{ConsumerRetryPolicy.MaximumAttempts}'.");
+        }
+
         return new DeliveryEnvelope(
             messageId,
-            correlationId,
-            integrationEvent);
+            integrationEvent,
+            currentAttempt,
+            eventArgs.Body.ToArray());
+    }
+
+    private static int ReadPreviousFailedAttempts(
+        IDictionary<string, object?>? headers)
+    {
+        if (
+            headers is null
+            || !headers.TryGetValue(
+                RetryAttemptHeaderName,
+                out var rawValue)
+            || rawValue is null)
+        {
+            return 0;
+        }
+
+        var attemptCount =
+            rawValue switch
+            {
+                byte value =>
+                    value,
+
+                sbyte value =>
+                    value,
+
+                short value =>
+                    value,
+
+                ushort value =>
+                    value,
+
+                int value =>
+                    value,
+
+                uint value
+                    when value <= int.MaxValue =>
+                    checked(
+                        (int)value),
+
+                long value
+                    when value <= int.MaxValue
+                    && value >= int.MinValue =>
+                    checked(
+                        (int)value),
+
+                ulong value
+                    when value <= int.MaxValue =>
+                    checked(
+                        (int)value),
+
+                byte[] value =>
+                    ParseAttemptHeaderText(
+                        Encoding.UTF8.GetString(
+                            value)),
+
+                ReadOnlyMemory<byte> value =>
+                    ParseAttemptHeaderText(
+                        Encoding.UTF8.GetString(
+                            value.Span)),
+
+                string value =>
+                    ParseAttemptHeaderText(
+                        value),
+
+                _ =>
+                    throw new PermanentMessageException(
+                        $"RabbitMQ header '{RetryAttemptHeaderName}' has unsupported type '{rawValue.GetType().Name}'.")
+            };
+
+        if (
+            attemptCount < 0
+            || attemptCount
+                >= ConsumerRetryPolicy.MaximumAttempts)
+        {
+            throw new PermanentMessageException(
+                $"RabbitMQ header '{RetryAttemptHeaderName}' contains invalid attempt count '{attemptCount}'.");
+        }
+
+        return attemptCount;
+    }
+
+    private static int ParseAttemptHeaderText(
+        string value)
+    {
+        if (
+            int.TryParse(
+                value,
+                out var parsed))
+        {
+            return parsed;
+        }
+
+        throw new PermanentMessageException(
+            $"RabbitMQ header '{RetryAttemptHeaderName}' does not contain a valid integer.");
+    }
+
+    private string GetRetryQueueName(
+        TimeSpan delay)
+    {
+        return
+            $"{_consumerOptions.QueueName}.retry.{GetDelayName(delay)}";
+    }
+
+    private static string GetRetryRoutingKey(
+        TimeSpan delay)
+    {
+        return
+            $"{TransferCompletedIntegrationEvent.EventType}.retry.{GetDelayName(delay)}";
+    }
+
+    private static string GetDelayName(
+        TimeSpan delay)
+    {
+        var totalSeconds =
+            checked(
+                (int)
+                    delay.TotalSeconds);
+
+        return
+            $"{totalSeconds}s";
     }
 
     private async Task TryNackAsync(
@@ -660,8 +1049,9 @@ public sealed class TransferCompletedRabbitMqConsumer
 
     private sealed record DeliveryEnvelope(
         Guid MessageId,
-        Guid CorrelationId,
-        TransferCompletedIntegrationEvent Event);
+        TransferCompletedIntegrationEvent Event,
+        int CurrentAttempt,
+        ReadOnlyMemory<byte> Body);
 
     private sealed class PermanentMessageException
         : Exception

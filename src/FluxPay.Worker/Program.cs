@@ -120,6 +120,11 @@ var consumerOptions =
                 $"{TransferCompletedConsumerOptions.SectionName}:QueueName")
             ?? TransferCompletedConsumerOptions.DefaultQueueName,
 
+        RetryExchangeName =
+            builder.Configuration.GetValue<string>(
+                $"{TransferCompletedConsumerOptions.SectionName}:RetryExchangeName")
+            ?? TransferCompletedConsumerOptions.DefaultRetryExchangeName,
+
         DeadLetterExchangeName =
             builder.Configuration.GetValue<string>(
                 $"{TransferCompletedConsumerOptions.SectionName}:DeadLetterExchangeName")

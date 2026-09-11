@@ -11,6 +11,9 @@ public sealed class TransferCompletedConsumerOptions
     public const string DefaultQueueName =
         "fluxpay.transfer-completed";
 
+    public const string DefaultRetryExchangeName =
+        "fluxpay.retry";
+
     public const string DefaultDeadLetterExchangeName =
         "fluxpay.dead-letter";
 
@@ -25,6 +28,9 @@ public sealed class TransferCompletedConsumerOptions
 
     public string QueueName { get; init; } =
         DefaultQueueName;
+
+    public string RetryExchangeName { get; init; } =
+        DefaultRetryExchangeName;
 
     public string DeadLetterExchangeName { get; init; } =
         DefaultDeadLetterExchangeName;
@@ -55,6 +61,13 @@ public sealed class TransferCompletedConsumerOptions
             throw new ArgumentException(
                 "Consumer queue name is required.",
                 nameof(QueueName));
+        }
+
+        if (string.IsNullOrWhiteSpace(RetryExchangeName))
+        {
+            throw new ArgumentException(
+                "Retry exchange name is required.",
+                nameof(RetryExchangeName));
         }
 
         if (string.IsNullOrWhiteSpace(DeadLetterExchangeName))
