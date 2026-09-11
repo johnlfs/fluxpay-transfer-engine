@@ -1,5 +1,6 @@
 using FluxPay.Api.Contracts.Transfers;
 using FluxPay.Api.ErrorHandling;
+using FluxPay.Api.Observability;
 using FluxPay.Application.Transfers.ExecuteTransfer;
 using FluxPay.Application.Transfers.GetTransfer;
 using Microsoft.AspNetCore.Mvc;
@@ -73,6 +74,9 @@ public sealed class TransfersController : ControllerBase
                     request.DestinationAccountId,
                     request.Amount),
                 cancellationToken);
+
+        ApiMetrics.RecordTransferExecution(
+            result.IsReplay);
 
         var response =
             new TransferResponse(

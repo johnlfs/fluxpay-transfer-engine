@@ -4,6 +4,7 @@ using FluxPay.Application.Messaging.Inbox;
 using FluxPay.Application.Messaging.Retry;
 using FluxPay.Application.Transfers.Events;
 using FluxPay.Infrastructure.Messaging;
+using FluxPay.Worker.Observability;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 
@@ -451,12 +452,16 @@ public sealed class TransferCompletedRabbitMqConsumer
                 result
                 == InboxProcessingStatus.Duplicate)
             {
+                WorkerMetrics.RecordConsumerDuplicate();
+
                 _logger.LogInformation(
                     "Duplicate transfer-completed delivery acknowledged without reprocessing. MessageId={MessageId}.",
                     envelope.MessageId);
 
                 return;
             }
+
+            WorkerMetrics.RecordConsumerProcessed();
 
             _logger.LogInformation(
                 "Transfer-completed delivery processed and acknowledged. MessageId={MessageId}, TransferId={TransferId}, Attempt={Attempt}.",
@@ -478,10 +483,17 @@ public sealed class TransferCompletedRabbitMqConsumer
                 "Invalid transfer-completed delivery will be dead-lettered. DeliveryTag={DeliveryTag}.",
                 eventArgs.DeliveryTag);
 
-            await TryNackAsync(
-                eventArgs.DeliveryTag,
-                requeue:
-                    false);
+            var deadLettered =
+                await TryNackAsync(
+                    eventArgs.DeliveryTag,
+                    requeue:
+                        false);
+
+            if (deadLettered)
+            {
+                WorkerMetrics.RecordConsumerDeadLettered(
+                    "invalid");
+            }
         }
         catch (Exception exception)
         {
@@ -492,10 +504,17 @@ public sealed class TransferCompletedRabbitMqConsumer
                     "Transfer-completed delivery failed before a valid envelope was produced. DeliveryTag={DeliveryTag}.",
                     eventArgs.DeliveryTag);
 
-                await TryNackAsync(
-                    eventArgs.DeliveryTag,
-                    requeue:
-                        false);
+                var deadLettered =
+                    await TryNackAsync(
+                        eventArgs.DeliveryTag,
+                        requeue:
+                            false);
+
+                if (deadLettered)
+                {
+                    WorkerMetrics.RecordConsumerDeadLettered(
+                        "unclassified");
+                }
 
                 return;
             }
@@ -525,10 +544,17 @@ public sealed class TransferCompletedRabbitMqConsumer
                 envelope.MessageId,
                 attemptCount);
 
-            await TryNackAsync(
-                eventArgs.DeliveryTag,
-                requeue:
-                    false);
+            var deadLettered =
+                await TryNackAsync(
+                    eventArgs.DeliveryTag,
+                    requeue:
+                        false);
+
+            if (deadLettered)
+            {
+                WorkerMetrics.RecordConsumerDeadLettered(
+                    "exhausted");
+            }
 
             return;
         }
@@ -552,6 +578,10 @@ public sealed class TransferCompletedRabbitMqConsumer
                     false,
                 cancellationToken:
                     CancellationToken.None);
+
+            WorkerMetrics.RecordConsumerRetry(
+                attemptCount,
+                delay);
 
             _logger.LogWarning(
                 processingException,
@@ -957,7 +987,7 @@ public sealed class TransferCompletedRabbitMqConsumer
             $"{totalSeconds}s";
     }
 
-    private async Task TryNackAsync(
+    private async Task<bool> TryNackAsync(
         ulong deliveryTag,
         bool requeue)
     {
@@ -968,7 +998,7 @@ public sealed class TransferCompletedRabbitMqConsumer
             channel is null
             || !channel.IsOpen)
         {
-            return;
+            return false;
         }
 
         try
@@ -982,6 +1012,8 @@ public sealed class TransferCompletedRabbitMqConsumer
                     requeue,
                 cancellationToken:
                     CancellationToken.None);
+
+            return true;
         }
         catch (Exception exception)
         {
@@ -990,6 +1022,8 @@ public sealed class TransferCompletedRabbitMqConsumer
                 "Unable to NACK RabbitMQ delivery. DeliveryTag={DeliveryTag}, Requeue={Requeue}.",
                 deliveryTag,
                 requeue);
+
+            return false;
         }
     }
 

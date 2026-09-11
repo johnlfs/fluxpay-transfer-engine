@@ -1,4 +1,5 @@
 using FluxPay.Infrastructure.Persistence.Outbox;
+using FluxPay.Worker.Observability;
 
 namespace FluxPay.Worker;
 
@@ -87,6 +88,15 @@ public sealed class Worker
             await processor.ProcessBatchAsync(
                 _options.BatchSize,
                 cancellationToken);
+
+        WorkerMetrics.RecordOutboxPublished(
+            result.Published);
+
+        WorkerMetrics.RecordOutboxPublishFailures(
+            result.Failed);
+
+        WorkerMetrics.RecordOutboxDeadLettered(
+            result.DeadLettered);
 
         if (
             result.Candidates > 0
