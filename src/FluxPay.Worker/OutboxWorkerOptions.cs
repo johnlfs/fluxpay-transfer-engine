@@ -11,6 +11,9 @@ public sealed class OutboxWorkerOptions
     public int PollingIntervalMilliseconds { get; init; } =
         1000;
 
+    public int Parallelism { get; init; } =
+        4;
+
     public void Validate()
     {
         if (
@@ -31,6 +34,16 @@ public sealed class OutboxWorkerOptions
                 nameof(PollingIntervalMilliseconds),
                 PollingIntervalMilliseconds,
                 "Outbox polling interval must be between 100 and 60000 milliseconds.");
+        }
+
+        if (
+            Parallelism <= 0
+            || Parallelism > 16)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(Parallelism),
+                Parallelism,
+                "Outbox parallelism must be between 1 and 16.");
         }
     }
 }

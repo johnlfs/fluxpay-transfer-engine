@@ -29,43 +29,27 @@ public sealed class Worker
         CancellationToken stoppingToken)
     {
         _logger.LogInformation(
-            "FluxPay outbox worker started. BatchSize={BatchSize}, PollingIntervalMilliseconds={PollingIntervalMilliseconds}.",
+            "FluxPay outbox worker started. BatchSize={BatchSize}, PollingIntervalMilliseconds={PollingIntervalMilliseconds}, Parallelism={Parallelism}.",
             _options.BatchSize,
-            _options.PollingIntervalMilliseconds);
+            _options.PollingIntervalMilliseconds,
+            _options.Parallelism);
 
         try
         {
-            while (!stoppingToken.IsCancellationRequested)
-            {
-                try
-                {
-                    var shouldDelay =
-                        await ProcessOnceAsync(
-                            stoppingToken);
+            var lanes =
+                Enumerable
+                    .Range(
+                        1,
+                        _options.Parallelism)
+                    .Select(
+                        laneNumber =>
+                            RunLaneAsync(
+                                laneNumber,
+                                stoppingToken))
+                    .ToArray();
 
-                    if (shouldDelay)
-                    {
-                        await Task.Delay(
-                            _options.PollingIntervalMilliseconds,
-                            stoppingToken);
-                    }
-                }
-                catch (OperationCanceledException)
-                    when (stoppingToken.IsCancellationRequested)
-                {
-                    break;
-                }
-                catch (Exception exception)
-                {
-                    _logger.LogError(
-                        exception,
-                        "Unexpected error while processing the transactional outbox.");
-
-                    await Task.Delay(
-                        _options.PollingIntervalMilliseconds,
-                        stoppingToken);
-                }
-            }
+            await Task.WhenAll(
+                lanes);
         }
         finally
         {
@@ -74,15 +58,76 @@ public sealed class Worker
         }
     }
 
+    private async Task RunLaneAsync(
+        int laneNumber,
+        CancellationToken stoppingToken)
+    {
+        _logger.LogInformation(
+            "Outbox processing lane {LaneNumber} started.",
+            laneNumber);
+
+        try
+        {
+            while (
+                !stoppingToken
+                    .IsCancellationRequested)
+            {
+                try
+                {
+                    var shouldDelay =
+                        await ProcessOnceAsync(
+                            laneNumber,
+                            stoppingToken);
+
+                    if (shouldDelay)
+                    {
+                        await Task.Delay(
+                            _options
+                                .PollingIntervalMilliseconds,
+                            stoppingToken);
+                    }
+                }
+                catch (OperationCanceledException)
+                    when (
+                        stoppingToken
+                            .IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (Exception exception)
+                {
+                    _logger.LogError(
+                        exception,
+                        "Unexpected error while processing transactional outbox on lane {LaneNumber}.",
+                        laneNumber);
+
+                    await Task.Delay(
+                        _options
+                            .PollingIntervalMilliseconds,
+                        stoppingToken);
+                }
+            }
+        }
+        finally
+        {
+            _logger.LogInformation(
+                "Outbox processing lane {LaneNumber} stopped.",
+                laneNumber);
+        }
+    }
+
     private async Task<bool> ProcessOnceAsync(
+        int laneNumber,
         CancellationToken cancellationToken)
     {
         await using var scope =
-            _scopeFactory.CreateAsyncScope();
+            _scopeFactory
+                .CreateAsyncScope();
 
         var processor =
             scope.ServiceProvider
-                .GetRequiredService<OutboxProcessor>();
+                .GetRequiredService<
+                    OutboxProcessor>();
 
         var result =
             await processor.ProcessBatchAsync(
@@ -105,7 +150,8 @@ public sealed class Worker
             || result.Skipped > 0)
         {
             _logger.LogInformation(
-                "Outbox batch processed. Candidates={Candidates}, Published={Published}, Failed={Failed}, DeadLettered={DeadLettered}, Skipped={Skipped}.",
+                "Outbox batch processed. Lane={LaneNumber}, Candidates={Candidates}, Published={Published}, Failed={Failed}, DeadLettered={DeadLettered}, Skipped={Skipped}.",
+                laneNumber,
                 result.Candidates,
                 result.Published,
                 result.Failed,
@@ -116,17 +162,20 @@ public sealed class Worker
         if (result.Failed > 0)
         {
             _logger.LogWarning(
-                "Outbox batch contains {Failed} failed publication attempt(s). Retry was scheduled according to the outbox backoff policy.",
+                "Outbox lane {LaneNumber} contains {Failed} failed publication attempt(s). Retry was scheduled according to the outbox backoff policy.",
+                laneNumber,
                 result.Failed);
         }
 
         if (result.DeadLettered > 0)
         {
             _logger.LogError(
-                "Outbox batch dead-lettered {DeadLettered} message(s) after exhausting the publication retry policy.",
+                "Outbox lane {LaneNumber} dead-lettered {DeadLettered} message(s) after exhausting the publication retry policy.",
+                laneNumber,
                 result.DeadLettered);
         }
 
-        return result.Candidates < _options.BatchSize;
+        return result.Candidates
+            < _options.BatchSize;
     }
 }

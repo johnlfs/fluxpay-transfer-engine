@@ -88,7 +88,8 @@ var rabbitMqOptions =
                 "RABBITMQ_VHOST"),
 
         ExchangeName =
-            RabbitMqOptions.DefaultExchangeName,
+            RabbitMqOptions
+                .DefaultExchangeName,
 
         ClientProvidedName =
             "fluxpay-outbox-worker"
@@ -100,14 +101,22 @@ var workerOptions =
     new OutboxWorkerOptions
     {
         BatchSize =
-            builder.Configuration.GetValue<int?>(
-                $"{OutboxWorkerOptions.SectionName}:BatchSize")
+            builder.Configuration
+                .GetValue<int?>(
+                    $"{OutboxWorkerOptions.SectionName}:BatchSize")
             ?? 100,
 
         PollingIntervalMilliseconds =
-            builder.Configuration.GetValue<int?>(
-                $"{OutboxWorkerOptions.SectionName}:PollingIntervalMilliseconds")
-            ?? 1000
+            builder.Configuration
+                .GetValue<int?>(
+                    $"{OutboxWorkerOptions.SectionName}:PollingIntervalMilliseconds")
+            ?? 1000,
+
+        Parallelism =
+            builder.Configuration
+                .GetValue<int?>(
+                    $"{OutboxWorkerOptions.SectionName}:Parallelism")
+            ?? 4
     };
 
 workerOptions.Validate();
@@ -116,43 +125,57 @@ var consumerOptions =
     new TransferCompletedConsumerOptions
     {
         ConsumerName =
-            builder.Configuration.GetValue<string>(
-                $"{TransferCompletedConsumerOptions.SectionName}:ConsumerName")
-            ?? TransferCompletedConsumerOptions.DefaultConsumerName,
+            builder.Configuration
+                .GetValue<string>(
+                    $"{TransferCompletedConsumerOptions.SectionName}:ConsumerName")
+            ?? TransferCompletedConsumerOptions
+                .DefaultConsumerName,
 
         QueueName =
-            builder.Configuration.GetValue<string>(
-                $"{TransferCompletedConsumerOptions.SectionName}:QueueName")
-            ?? TransferCompletedConsumerOptions.DefaultQueueName,
+            builder.Configuration
+                .GetValue<string>(
+                    $"{TransferCompletedConsumerOptions.SectionName}:QueueName")
+            ?? TransferCompletedConsumerOptions
+                .DefaultQueueName,
 
         RetryExchangeName =
-            builder.Configuration.GetValue<string>(
-                $"{TransferCompletedConsumerOptions.SectionName}:RetryExchangeName")
-            ?? TransferCompletedConsumerOptions.DefaultRetryExchangeName,
+            builder.Configuration
+                .GetValue<string>(
+                    $"{TransferCompletedConsumerOptions.SectionName}:RetryExchangeName")
+            ?? TransferCompletedConsumerOptions
+                .DefaultRetryExchangeName,
 
         DeadLetterExchangeName =
-            builder.Configuration.GetValue<string>(
-                $"{TransferCompletedConsumerOptions.SectionName}:DeadLetterExchangeName")
-            ?? TransferCompletedConsumerOptions.DefaultDeadLetterExchangeName,
+            builder.Configuration
+                .GetValue<string>(
+                    $"{TransferCompletedConsumerOptions.SectionName}:DeadLetterExchangeName")
+            ?? TransferCompletedConsumerOptions
+                .DefaultDeadLetterExchangeName,
 
         DeadLetterQueueName =
-            builder.Configuration.GetValue<string>(
-                $"{TransferCompletedConsumerOptions.SectionName}:DeadLetterQueueName")
-            ?? TransferCompletedConsumerOptions.DefaultDeadLetterQueueName,
+            builder.Configuration
+                .GetValue<string>(
+                    $"{TransferCompletedConsumerOptions.SectionName}:DeadLetterQueueName")
+            ?? TransferCompletedConsumerOptions
+                .DefaultDeadLetterQueueName,
 
         DeadLetterRoutingKey =
-            builder.Configuration.GetValue<string>(
-                $"{TransferCompletedConsumerOptions.SectionName}:DeadLetterRoutingKey")
-            ?? TransferCompletedConsumerOptions.DefaultDeadLetterRoutingKey,
+            builder.Configuration
+                .GetValue<string>(
+                    $"{TransferCompletedConsumerOptions.SectionName}:DeadLetterRoutingKey")
+            ?? TransferCompletedConsumerOptions
+                .DefaultDeadLetterRoutingKey,
 
         ClientProvidedName =
-            builder.Configuration.GetValue<string>(
-                $"{TransferCompletedConsumerOptions.SectionName}:ClientProvidedName")
+            builder.Configuration
+                .GetValue<string>(
+                    $"{TransferCompletedConsumerOptions.SectionName}:ClientProvidedName")
             ?? "fluxpay-transfer-completed-consumer",
 
         PrefetchCount =
-            builder.Configuration.GetValue<int?>(
-                $"{TransferCompletedConsumerOptions.SectionName}:PrefetchCount")
+            builder.Configuration
+                .GetValue<int?>(
+                    $"{TransferCompletedConsumerOptions.SectionName}:PrefetchCount")
             ?? 1
     };
 
@@ -174,8 +197,11 @@ builder.Services.AddSingleton(
     consumerOptions);
 
 builder.Services.AddSingleton<
-    IIntegrationEventPublisher,
-    RabbitMqPublisher>();
+    IIntegrationEventPublisher>(
+        _ =>
+            new RabbitMqPublisherPool(
+                rabbitMqOptions,
+                workerOptions.Parallelism));
 
 builder.Services.AddScoped<
     OutboxProcessor>();
