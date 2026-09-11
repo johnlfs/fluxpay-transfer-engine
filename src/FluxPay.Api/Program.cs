@@ -1,20 +1,49 @@
-var builder = WebApplication.CreateBuilder(args);
+using FluxPay.Api.ErrorHandling;
+using FluxPay.Application.Accounts.CreateAccount;
+using FluxPay.Application.Accounts.GetAccount;
+using FluxPay.Infrastructure;
 
-// Add services to the container.
+var builder =
+    WebApplication.CreateBuilder(args);
+
+var connectionString =
+    builder.Configuration["FLUXPAY_DB_CONNECTION"];
+
+if (string.IsNullOrWhiteSpace(connectionString))
+{
+    throw new InvalidOperationException(
+        "Environment variable 'FLUXPAY_DB_CONNECTION' is required.");
+}
 
 builder.Services.AddControllers();
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
+
 builder.Services.AddOpenApi();
 
-var app = builder.Build();
+builder.Services.AddProblemDetails();
 
-// Configure the HTTP request pipeline.
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+
+builder.Services.AddInfrastructure(
+    connectionString);
+
+builder.Services.AddScoped<CreateAccountHandler>();
+
+builder.Services.AddScoped<GetAccountHandler>();
+
+builder.Services.AddSingleton(
+    TimeProvider.System);
+
+var app =
+    builder.Build();
+
+app.UseExceptionHandler();
+
+app.UseStatusCodePages();
+
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
 }
-
-app.UseAuthorization();
 
 app.MapControllers();
 
