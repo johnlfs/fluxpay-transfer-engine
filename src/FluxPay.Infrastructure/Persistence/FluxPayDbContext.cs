@@ -1,4 +1,5 @@
 using FluxPay.Domain.Accounts;
+using FluxPay.Domain.Transfers;
 using Microsoft.EntityFrameworkCore;
 
 namespace FluxPay.Infrastructure.Persistence;
@@ -11,9 +12,14 @@ public sealed class FluxPayDbContext : DbContext
     {
     }
 
-    public DbSet<Account> Accounts => Set<Account>();
+    public DbSet<Account> Accounts =>
+        Set<Account>();
 
-    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    public DbSet<Transfer> Transfers =>
+        Set<Transfer>();
+
+    protected override void OnModelCreating(
+        ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(
             typeof(FluxPayDbContext).Assembly);
