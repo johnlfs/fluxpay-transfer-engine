@@ -18,6 +18,10 @@ public sealed class OutboxMessage
 
     public DateTimeOffset? PublishedAt { get; set; }
 
+    public DateTimeOffset? NextAttemptAt { get; set; }
+
+    public DateTimeOffset? DeadLetteredAt { get; set; }
+
     public int AttemptCount { get; set; }
 
     public string? LastError { get; set; }

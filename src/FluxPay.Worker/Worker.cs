@@ -91,21 +91,30 @@ public sealed class Worker
         if (
             result.Candidates > 0
             || result.Failed > 0
+            || result.DeadLettered > 0
             || result.Skipped > 0)
         {
             _logger.LogInformation(
-                "Outbox batch processed. Candidates={Candidates}, Published={Published}, Failed={Failed}, Skipped={Skipped}.",
+                "Outbox batch processed. Candidates={Candidates}, Published={Published}, Failed={Failed}, DeadLettered={DeadLettered}, Skipped={Skipped}.",
                 result.Candidates,
                 result.Published,
                 result.Failed,
+                result.DeadLettered,
                 result.Skipped);
         }
 
         if (result.Failed > 0)
         {
             _logger.LogWarning(
-                "Outbox batch contains {Failed} failed publication attempt(s). Messages remain pending for retry.",
+                "Outbox batch contains {Failed} failed publication attempt(s). Retry was scheduled according to the outbox backoff policy.",
                 result.Failed);
+        }
+
+        if (result.DeadLettered > 0)
+        {
+            _logger.LogError(
+                "Outbox batch dead-lettered {DeadLettered} message(s) after exhausting the publication retry policy.",
+                result.DeadLettered);
         }
 
         return result.Candidates < _options.BatchSize;

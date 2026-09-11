@@ -25,6 +25,25 @@ public sealed class OutboxMessageConfiguration
                 tableBuilder.HasCheckConstraint(
                     "ck_outbox_messages_payload_not_empty",
                     "length(payload::text) > 0");
+
+                tableBuilder.HasCheckConstraint(
+                    "ck_outbox_messages_terminal_state",
+                    """
+                    NOT (
+                        published_at IS NOT NULL
+                        AND dead_lettered_at IS NOT NULL
+                    )
+                    """);
+
+                tableBuilder.HasCheckConstraint(
+                    "ck_outbox_messages_next_attempt_state",
+                    """
+                    next_attempt_at IS NULL
+                    OR (
+                        published_at IS NULL
+                        AND dead_lettered_at IS NULL
+                    )
+                    """);
             });
 
         builder.HasKey(
@@ -93,6 +112,22 @@ public sealed class OutboxMessageConfiguration
 
         builder.Property(
                 message =>
+                    message.NextAttemptAt)
+            .HasColumnName(
+                "next_attempt_at")
+            .HasColumnType(
+                "timestamp with time zone");
+
+        builder.Property(
+                message =>
+                    message.DeadLetteredAt)
+            .HasColumnName(
+                "dead_lettered_at")
+            .HasColumnType(
+                "timestamp with time zone");
+
+        builder.Property(
+                message =>
                     message.AttemptCount)
             .HasColumnName(
                 "attempt_count")
@@ -104,7 +139,9 @@ public sealed class OutboxMessageConfiguration
                 message =>
                     message.LastError)
             .HasColumnName(
-                "last_error");
+                "last_error")
+            .HasColumnType(
+                "text");
 
         builder.HasIndex(
                 message =>
@@ -116,13 +153,14 @@ public sealed class OutboxMessageConfiguration
                 message =>
                     new
                     {
+                        message.NextAttemptAt,
                         message.OccurredAt,
                         message.Id
                     })
             .HasDatabaseName(
-                "ix_outbox_messages_pending")
+                "ix_outbox_messages_dispatchable")
             .HasFilter(
-                "published_at IS NULL");
+                "published_at IS NULL AND dead_lettered_at IS NULL");
 
         builder.HasIndex(
                 message =>

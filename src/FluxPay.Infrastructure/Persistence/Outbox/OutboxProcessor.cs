@@ -39,12 +39,20 @@ public sealed class OutboxProcessor
                 "Outbox batch size must be greater than zero.");
         }
 
+        var now =
+            GetUtcNow();
+
         var candidateIds =
             await _dbContext.OutboxMessages
                 .AsNoTracking()
                 .Where(
                     message =>
-                        message.PublishedAt == null)
+                        message.PublishedAt == null
+                        && message.DeadLetteredAt == null
+                        && (
+                            message.NextAttemptAt == null
+                            || message.NextAttemptAt <= now
+                        ))
                 .OrderBy(
                     message =>
                         message.OccurredAt)
@@ -63,6 +71,9 @@ public sealed class OutboxProcessor
             0;
 
         var failed =
+            0;
+
+        var deadLettered =
             0;
 
         var skipped =
@@ -87,6 +98,10 @@ public sealed class OutboxProcessor
                     failed++;
                     break;
 
+                case OutboxMessageProcessingStatus.DeadLettered:
+                    deadLettered++;
+                    break;
+
                 case OutboxMessageProcessingStatus.Skipped:
                     skipped++;
                     break;
@@ -101,6 +116,7 @@ public sealed class OutboxProcessor
             candidateIds.Count,
             published,
             failed,
+            deadLettered,
             skipped);
     }
 
@@ -108,6 +124,9 @@ public sealed class OutboxProcessor
         Guid messageId,
         CancellationToken cancellationToken)
     {
+        var processingStartedAt =
+            GetUtcNow();
+
         await using var transaction =
             await _dbContext.Database.BeginTransactionAsync(
                 cancellationToken);
@@ -122,6 +141,11 @@ public sealed class OutboxProcessor
                         FROM outbox_messages
                         WHERE id = {messageId}
                           AND published_at IS NULL
+                          AND dead_lettered_at IS NULL
+                          AND (
+                              next_attempt_at IS NULL
+                              OR next_attempt_at <= {processingStartedAt}
+                          )
                         FOR UPDATE SKIP LOCKED
                         """)
                     .SingleOrDefaultAsync(
@@ -147,9 +171,13 @@ public sealed class OutboxProcessor
                     cancellationToken);
 
                 message.PublishedAt =
-                    _timeProvider
-                        .GetUtcNow()
-                        .ToUniversalTime();
+                    GetUtcNow();
+
+                message.NextAttemptAt =
+                    null;
+
+                message.DeadLetteredAt =
+                    null;
 
                 message.LastError =
                     null;
@@ -173,6 +201,33 @@ public sealed class OutboxProcessor
                     FormatError(
                         exception);
 
+                if (
+                    message.AttemptCount
+                    >= OutboxRetryPolicy.MaximumAttempts)
+                {
+                    message.NextAttemptAt =
+                        null;
+
+                    message.DeadLetteredAt =
+                        GetUtcNow();
+
+                    await _dbContext.SaveChangesAsync(
+                        cancellationToken);
+
+                    await transaction.CommitAsync(
+                        cancellationToken);
+
+                    return OutboxMessageProcessingStatus.DeadLettered;
+                }
+
+                message.NextAttemptAt =
+                    GetUtcNow()
+                    + OutboxRetryPolicy.GetDelay(
+                        message.AttemptCount);
+
+                message.DeadLetteredAt =
+                    null;
+
                 await _dbContext.SaveChangesAsync(
                     cancellationToken);
 
@@ -195,6 +250,13 @@ public sealed class OutboxProcessor
         }
     }
 
+    private DateTimeOffset GetUtcNow()
+    {
+        return _timeProvider
+            .GetUtcNow()
+            .ToUniversalTime();
+    }
+
     private static string FormatError(
         Exception exception)
     {
@@ -213,6 +275,7 @@ public sealed class OutboxProcessor
     {
         Published = 1,
         Failed = 2,
-        Skipped = 3
+        DeadLettered = 3,
+        Skipped = 4
     }
 }

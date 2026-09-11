@@ -4,4 +4,5 @@ public sealed record OutboxProcessingResult(
     int Candidates,
     int Published,
     int Failed,
+    int DeadLettered,
     int Skipped);
