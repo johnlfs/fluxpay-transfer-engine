@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+
+  pull_request:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  NUGET_XMLDOC_MODE: skip
+
+jobs:
+  build-and-test:
+    name: Build and Test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Show .NET environment
+        run: dotnet --info
+
+      - name: Restore local .NET tools
+        run: dotnet tool restore
+
+      - name: Restore dependencies
+        run: dotnet restore FluxPay.slnx
+
+      - name: Build solution
+        run: >
+          dotnet build
+          FluxPay.slnx
+          --configuration Release
+          --no-restore
+
+      - name: Run unit tests
+        run: >
+          dotnet test
+          tests/FluxPay.UnitTests/FluxPay.UnitTests.csproj
+          --configuration Release
+          --no-build
+          --no-restore
+          --logger "trx;LogFileName=unit-tests.trx"
+          --results-directory TestResults/unit
+
+      - name: Run integration tests
+        run: >
+          dotnet test
+          tests/FluxPay.IntegrationTests/FluxPay.IntegrationTests.csproj
+          --configuration Release
+          --no-build
+          --no-restore
+          --logger "trx;LogFileName=integration-tests.trx"
+          --results-directory TestResults/integration
+
+      - name: Run architecture tests
+        run: >
+          dotnet test
+          tests/FluxPay.ArchitectureTests/FluxPay.ArchitectureTests.csproj
+          --configuration Release
+          --no-build
+          --no-restore
+          --logger "trx;LogFileName=architecture-tests.trx"
+          --results-directory TestResults/architecture
+
+      - name: Show Docker environment
+        run: |
+          docker version
+          docker compose version
+
+      - name: Validate Docker Compose
+        run: >
+          docker compose
+          --env-file .env.example
+          config
+          --quiet
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: TestResults/**/*.trx
+          if-no-files-found: warn
+          retention-days: 7
