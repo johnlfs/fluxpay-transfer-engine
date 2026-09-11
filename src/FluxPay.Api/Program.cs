@@ -10,6 +10,7 @@ using FluxPay.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 
 var builder =
     WebApplication.CreateBuilder(
@@ -85,6 +86,21 @@ builder.Services
                 .AddMeter(
                     "Microsoft.AspNetCore.Server.Kestrel")
                 .AddRuntimeInstrumentation()
+                .AddOtlpExporter())
+    .WithTracing(
+        tracing =>
+            tracing
+                .AddAspNetCoreInstrumentation(
+                    options =>
+                    {
+                        options.Filter =
+                            httpContext =>
+                                !httpContext
+                                    .Request
+                                    .Path
+                                    .StartsWithSegments(
+                                        "/health");
+                    })
                 .AddOtlpExporter());
 
 var app =

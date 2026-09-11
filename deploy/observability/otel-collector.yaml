@@ -7,6 +7,7 @@ receivers:
     protocols:
       grpc:
         endpoint: 0.0.0.0:4317
+
       http:
         endpoint: 0.0.0.0:4318
 
@@ -24,6 +25,12 @@ exporters:
         - service.name
         - service.version
 
+  otlp/tempo:
+    endpoint: tempo:4317
+
+    tls:
+      insecure: true
+
 service:
   extensions:
     - health_check
@@ -38,3 +45,13 @@ service:
 
       exporters:
         - prometheus
+
+    traces:
+      receivers:
+        - otlp
+
+      processors:
+        - batch
+
+      exporters:
+        - otlp/tempo
