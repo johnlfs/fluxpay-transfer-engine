@@ -10,4 +10,9 @@
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="../FluxPay.Application/FluxPay.Application.csproj" />
+    <ProjectReference Include="../FluxPay.Infrastructure/FluxPay.Infrastructure.csproj" />
+  </ItemGroup>
+
 </Project>
