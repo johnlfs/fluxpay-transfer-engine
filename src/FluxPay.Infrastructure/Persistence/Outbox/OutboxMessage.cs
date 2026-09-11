@@ -12,6 +12,10 @@ public sealed class OutboxMessage
     public string Payload { get; set; } =
         string.Empty;
 
+    public string? TraceParent { get; set; }
+
+    public string? TraceState { get; set; }
+
     public DateTimeOffset OccurredAt { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }

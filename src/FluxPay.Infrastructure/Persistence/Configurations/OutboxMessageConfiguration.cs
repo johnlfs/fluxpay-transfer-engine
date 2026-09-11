@@ -7,6 +7,9 @@ namespace FluxPay.Infrastructure.Persistence.Configurations;
 public sealed class OutboxMessageConfiguration
     : IEntityTypeConfiguration<OutboxMessage>
 {
+    private const int MaximumTraceContextLength =
+        512;
+
     public void Configure(
         EntityTypeBuilder<OutboxMessage> builder)
     {
@@ -83,6 +86,22 @@ public sealed class OutboxMessageConfiguration
             .HasColumnType(
                 "jsonb")
             .IsRequired();
+
+        builder.Property(
+                message =>
+                    message.TraceParent)
+            .HasColumnName(
+                "trace_parent")
+            .HasMaxLength(
+                MaximumTraceContextLength);
+
+        builder.Property(
+                message =>
+                    message.TraceState)
+            .HasColumnName(
+                "trace_state")
+            .HasMaxLength(
+                MaximumTraceContextLength);
 
         builder.Property(
                 message =>

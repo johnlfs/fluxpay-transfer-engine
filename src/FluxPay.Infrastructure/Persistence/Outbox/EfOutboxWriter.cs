@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using FluxPay.Application.Abstractions.Messaging;
 using FluxPay.Application.Common.Time;
@@ -61,6 +62,9 @@ public sealed class EfOutboxWriter
                 nameof(eventType));
         }
 
+        var traceContext =
+            CaptureTraceContext();
+
         var message =
             new OutboxMessage
             {
@@ -78,6 +82,12 @@ public sealed class EfOutboxWriter
                         payload,
                         SerializerOptions),
 
+                TraceParent =
+                    traceContext.TraceParent,
+
+                TraceState =
+                    traceContext.TraceState,
+
                 OccurredAt =
                     UtcTimestamp.Normalize(
                         occurredAt),
@@ -87,6 +97,12 @@ public sealed class EfOutboxWriter
                         _timeProvider),
 
                 PublishedAt =
+                    null,
+
+                NextAttemptAt =
+                    null,
+
+                DeadLetteredAt =
                     null,
 
                 AttemptCount =
@@ -102,5 +118,41 @@ public sealed class EfOutboxWriter
                 message,
                 cancellationToken)
             .AsTask();
+    }
+
+    private static TraceContextSnapshot CaptureTraceContext()
+    {
+        var activity =
+            Activity.Current;
+
+        if (
+            activity is null
+            || activity.IdFormat
+                != ActivityIdFormat.W3C
+            || string.IsNullOrWhiteSpace(
+                activity.Id))
+        {
+            return TraceContextSnapshot.Empty;
+        }
+
+        var traceState =
+            string.IsNullOrWhiteSpace(
+                activity.TraceStateString)
+                ? null
+                : activity.TraceStateString;
+
+        return new TraceContextSnapshot(
+            activity.Id,
+            traceState);
+    }
+
+    private sealed record TraceContextSnapshot(
+        string? TraceParent,
+        string? TraceState)
+    {
+        public static TraceContextSnapshot Empty { get; } =
+            new(
+                null,
+                null);
     }
 }
