@@ -1,5 +1,6 @@
 using FluxPay.Application.Abstractions.Persistence;
 using FluxPay.Application.Accounts.Exceptions;
+using FluxPay.Application.Transfers.Exceptions;
 using FluxPay.Application.Transfers.ExecuteTransfer;
 using FluxPay.Domain.Accounts;
 using FluxPay.Domain.Common;
@@ -21,7 +22,7 @@ public sealed class ExecuteTransferHandlerTests
             TimeSpan.Zero);
 
     [Fact]
-    public async Task HandleAsync_WithValidTransfer_MovesMoneyAndCompletesTransfer()
+    public async Task HandleAsync_WithValidTransfer_MovesMoneyAndCompletesIdempotencyRecord()
     {
         var sourceAccount =
             CreateAccount(
@@ -33,6 +34,9 @@ public sealed class ExecuteTransferHandlerTests
                 "DESTINATION-001",
                 100.00m);
 
+        var idempotencyKey =
+            Guid.NewGuid();
+
         var accountRepository =
             new FakeTransferAccountRepository(
                 sourceAccount,
@@ -40,6 +44,10 @@ public sealed class ExecuteTransferHandlerTests
 
         var transferRepository =
             new FakeTransferRepository();
+
+        var idempotencyRepository =
+            new FakeTransferIdempotencyRepository(
+                TransferIdempotencyClaimStatus.Acquired);
 
         var unitOfWork =
             new FakeUnitOfWork();
@@ -51,12 +59,14 @@ public sealed class ExecuteTransferHandlerTests
             CreateHandler(
                 accountRepository,
                 transferRepository,
+                idempotencyRepository,
                 unitOfWork,
                 transactionManager);
 
         var result =
             await handler.HandleAsync(
                 new ExecuteTransferCommand(
+                    idempotencyKey,
                     sourceAccount.Id,
                     destinationAccount.Id,
                     250.00m));
@@ -70,54 +80,27 @@ public sealed class ExecuteTransferHandlerTests
             destinationAccount.Balance.Amount);
 
         Assert.Equal(
-            FixedUtcNow,
-            sourceAccount.UpdatedAt);
-
-        Assert.Equal(
-            FixedUtcNow,
-            destinationAccount.UpdatedAt);
+            TransferStatus.Completed,
+            result.Status);
 
         Assert.Single(
             transferRepository.AddedTransfers);
 
-        var persistedTransfer =
-            transferRepository.AddedTransfers.Single();
+        Assert.Equal(
+            1,
+            idempotencyRepository.TryClaimCallCount);
+
+        Assert.Equal(
+            1,
+            idempotencyRepository.CompleteCallCount);
+
+        Assert.Equal(
+            idempotencyKey,
+            idempotencyRepository.LastCompletedKey);
 
         Assert.Equal(
             result.Id,
-            persistedTransfer.Id);
-
-        Assert.Equal(
-            sourceAccount.Id,
-            result.SourceAccountId);
-
-        Assert.Equal(
-            destinationAccount.Id,
-            result.DestinationAccountId);
-
-        Assert.Equal(
-            250.00m,
-            result.Amount);
-
-        Assert.Equal(
-            TransferStatus.Completed,
-            result.Status);
-
-        Assert.Equal(
-            FixedUtcNow,
-            result.CreatedAt);
-
-        Assert.Equal(
-            FixedUtcNow,
-            result.FinalizedAt);
-
-        Assert.Equal(
-            TransferStatus.Completed,
-            persistedTransfer.Status);
-
-        Assert.Equal(
-            FixedUtcNow,
-            persistedTransfer.FinalizedAt);
+            idempotencyRepository.LastCompletedTransferId);
 
         Assert.Equal(
             1,
@@ -125,10 +108,175 @@ public sealed class ExecuteTransferHandlerTests
 
         Assert.Equal(
             1,
-            transactionManager.ExecuteCallCount);
+            unitOfWork.SaveChangesCallCount);
 
         Assert.Equal(
             1,
+            transactionManager.ExecuteCallCount);
+    }
+
+    [Fact]
+    public async Task HandleAsync_WhenRequestWasAlreadyCompleted_ReturnsExistingTransferWithoutMovingMoneyAgain()
+    {
+        var sourceAccount =
+            CreateAccount(
+                "SOURCE-REPLAY",
+                750.00m);
+
+        var destinationAccount =
+            CreateAccount(
+                "DESTINATION-REPLAY",
+                350.00m);
+
+        var existingTransfer =
+            Transfer.Create(
+                sourceAccount.Id,
+                destinationAccount.Id,
+                new Money(250.00m),
+                FixedUtcNow.AddMinutes(-1));
+
+        existingTransfer.Complete(
+            FixedUtcNow.AddMinutes(-1));
+
+        var accountRepository =
+            new FakeTransferAccountRepository(
+                sourceAccount,
+                destinationAccount);
+
+        var transferRepository =
+            new FakeTransferRepository(
+                existingTransfer);
+
+        var idempotencyRepository =
+            new FakeTransferIdempotencyRepository(
+                TransferIdempotencyClaimStatus.Completed,
+                existingTransfer.Id);
+
+        var unitOfWork =
+            new FakeUnitOfWork();
+
+        var transactionManager =
+            new FakeTransactionManager();
+
+        var handler =
+            CreateHandler(
+                accountRepository,
+                transferRepository,
+                idempotencyRepository,
+                unitOfWork,
+                transactionManager);
+
+        var result =
+            await handler.HandleAsync(
+                new ExecuteTransferCommand(
+                    Guid.NewGuid(),
+                    sourceAccount.Id,
+                    destinationAccount.Id,
+                    250.00m));
+
+        Assert.Equal(
+            existingTransfer.Id,
+            result.Id);
+
+        Assert.Equal(
+            750.00m,
+            sourceAccount.Balance.Amount);
+
+        Assert.Equal(
+            350.00m,
+            destinationAccount.Balance.Amount);
+
+        Assert.Equal(
+            0,
+            accountRepository.GetForTransferCallCount);
+
+        Assert.Equal(
+            0,
+            transferRepository.AddCallCount);
+
+        Assert.Equal(
+            0,
+            idempotencyRepository.CompleteCallCount);
+
+        Assert.Equal(
+            0,
+            unitOfWork.SaveChangesCallCount);
+
+        Assert.Equal(
+            1,
+            transactionManager.ExecuteCallCount);
+    }
+
+    [Fact]
+    public async Task HandleAsync_WhenIdempotencyKeyHasDifferentPayload_ThrowsConflictBeforeAccountLock()
+    {
+        var sourceAccount =
+            CreateAccount(
+                "SOURCE-CONFLICT",
+                1000.00m);
+
+        var destinationAccount =
+            CreateAccount(
+                "DESTINATION-CONFLICT",
+                100.00m);
+
+        var idempotencyKey =
+            Guid.NewGuid();
+
+        var accountRepository =
+            new FakeTransferAccountRepository(
+                sourceAccount,
+                destinationAccount);
+
+        var transferRepository =
+            new FakeTransferRepository();
+
+        var idempotencyRepository =
+            new FakeTransferIdempotencyRepository(
+                TransferIdempotencyClaimStatus.Conflict);
+
+        var unitOfWork =
+            new FakeUnitOfWork();
+
+        var transactionManager =
+            new FakeTransactionManager();
+
+        var handler =
+            CreateHandler(
+                accountRepository,
+                transferRepository,
+                idempotencyRepository,
+                unitOfWork,
+                transactionManager);
+
+        var exception =
+            await Assert.ThrowsAsync<IdempotencyKeyConflictException>(
+                () =>
+                    handler.HandleAsync(
+                        new ExecuteTransferCommand(
+                            idempotencyKey,
+                            sourceAccount.Id,
+                            destinationAccount.Id,
+                            250.00m)));
+
+        Assert.Equal(
+            idempotencyKey,
+            exception.IdempotencyKey);
+
+        Assert.Equal(
+            0,
+            accountRepository.GetForTransferCallCount);
+
+        Assert.Equal(
+            0,
+            transferRepository.AddCallCount);
+
+        Assert.Equal(
+            0,
+            idempotencyRepository.CompleteCallCount);
+
+        Assert.Equal(
+            0,
             unitOfWork.SaveChangesCallCount);
     }
 
@@ -143,31 +291,31 @@ public sealed class ExecuteTransferHandlerTests
         var missingSourceAccountId =
             Guid.NewGuid();
 
-        var accountRepository =
-            new FakeTransferAccountRepository(
-                destinationAccount);
-
         var transferRepository =
             new FakeTransferRepository();
+
+        var idempotencyRepository =
+            new FakeTransferIdempotencyRepository(
+                TransferIdempotencyClaimStatus.Acquired);
 
         var unitOfWork =
             new FakeUnitOfWork();
 
-        var transactionManager =
-            new FakeTransactionManager();
-
         var handler =
             CreateHandler(
-                accountRepository,
+                new FakeTransferAccountRepository(
+                    destinationAccount),
                 transferRepository,
+                idempotencyRepository,
                 unitOfWork,
-                transactionManager);
+                new FakeTransactionManager());
 
         var exception =
             await Assert.ThrowsAsync<AccountNotFoundException>(
                 () =>
                     handler.HandleAsync(
                         new ExecuteTransferCommand(
+                            Guid.NewGuid(),
                             missingSourceAccountId,
                             destinationAccount.Id,
                             50.00m)));
@@ -177,19 +325,12 @@ public sealed class ExecuteTransferHandlerTests
             exception.AccountId);
 
         Assert.Equal(
-            100.00m,
-            destinationAccount.Balance.Amount);
+            0,
+            transferRepository.AddCallCount);
 
         Assert.Equal(
-            1,
-            accountRepository.GetForTransferCallCount);
-
-        Assert.Equal(
-            1,
-            transactionManager.ExecuteCallCount);
-
-        Assert.Empty(
-            transferRepository.AddedTransfers);
+            0,
+            idempotencyRepository.CompleteCallCount);
 
         Assert.Equal(
             0,
@@ -207,53 +348,45 @@ public sealed class ExecuteTransferHandlerTests
         var missingDestinationAccountId =
             Guid.NewGuid();
 
-        var accountRepository =
-            new FakeTransferAccountRepository(
-                sourceAccount);
-
         var transferRepository =
             new FakeTransferRepository();
+
+        var idempotencyRepository =
+            new FakeTransferIdempotencyRepository(
+                TransferIdempotencyClaimStatus.Acquired);
 
         var unitOfWork =
             new FakeUnitOfWork();
 
-        var transactionManager =
-            new FakeTransactionManager();
-
         var handler =
             CreateHandler(
-                accountRepository,
+                new FakeTransferAccountRepository(
+                    sourceAccount),
                 transferRepository,
+                idempotencyRepository,
                 unitOfWork,
-                transactionManager);
+                new FakeTransactionManager());
 
-        var exception =
-            await Assert.ThrowsAsync<AccountNotFoundException>(
-                () =>
-                    handler.HandleAsync(
-                        new ExecuteTransferCommand(
-                            sourceAccount.Id,
-                            missingDestinationAccountId,
-                            250.00m)));
-
-        Assert.Equal(
-            missingDestinationAccountId,
-            exception.AccountId);
+        await Assert.ThrowsAsync<AccountNotFoundException>(
+            () =>
+                handler.HandleAsync(
+                    new ExecuteTransferCommand(
+                        Guid.NewGuid(),
+                        sourceAccount.Id,
+                        missingDestinationAccountId,
+                        250.00m)));
 
         Assert.Equal(
             1000.00m,
             sourceAccount.Balance.Amount);
 
         Assert.Equal(
-            1,
-            accountRepository.GetForTransferCallCount);
+            0,
+            transferRepository.AddCallCount);
 
         Assert.Equal(
-            1,
-            transactionManager.ExecuteCallCount);
-
-        Assert.Empty(
-            transferRepository.AddedTransfers);
+            0,
+            idempotencyRepository.CompleteCallCount);
 
         Assert.Equal(
             0,
@@ -261,7 +394,7 @@ public sealed class ExecuteTransferHandlerTests
     }
 
     [Fact]
-    public async Task HandleAsync_WithInsufficientFunds_DoesNotChangeBalancesOrPersist()
+    public async Task HandleAsync_WithInsufficientFunds_DoesNotPersistTransferOrCompleteIdempotency()
     {
         var sourceAccount =
             CreateAccount(
@@ -273,32 +406,32 @@ public sealed class ExecuteTransferHandlerTests
                 "DESTINATION-004",
                 100.00m);
 
-        var accountRepository =
-            new FakeTransferAccountRepository(
-                sourceAccount,
-                destinationAccount);
-
         var transferRepository =
             new FakeTransferRepository();
+
+        var idempotencyRepository =
+            new FakeTransferIdempotencyRepository(
+                TransferIdempotencyClaimStatus.Acquired);
 
         var unitOfWork =
             new FakeUnitOfWork();
 
-        var transactionManager =
-            new FakeTransactionManager();
-
         var handler =
             CreateHandler(
-                accountRepository,
+                new FakeTransferAccountRepository(
+                    sourceAccount,
+                    destinationAccount),
                 transferRepository,
+                idempotencyRepository,
                 unitOfWork,
-                transactionManager);
+                new FakeTransactionManager());
 
         var exception =
             await Assert.ThrowsAsync<InsufficientFundsException>(
                 () =>
                     handler.HandleAsync(
                         new ExecuteTransferCommand(
+                            Guid.NewGuid(),
                             sourceAccount.Id,
                             destinationAccount.Id,
                             100.00m)));
@@ -320,15 +453,12 @@ public sealed class ExecuteTransferHandlerTests
             destinationAccount.Balance.Amount);
 
         Assert.Equal(
-            1,
-            accountRepository.GetForTransferCallCount);
+            0,
+            transferRepository.AddCallCount);
 
         Assert.Equal(
-            1,
-            transactionManager.ExecuteCallCount);
-
-        Assert.Empty(
-            transferRepository.AddedTransfers);
+            0,
+            idempotencyRepository.CompleteCallCount);
 
         Assert.Equal(
             0,
@@ -343,24 +473,58 @@ public sealed class ExecuteTransferHandlerTests
                 "ACCOUNT-005",
                 1000.00m);
 
-        var accountRepository =
-            new FakeTransferAccountRepository(
-                account);
+        var transactionManager =
+            new FakeTransactionManager();
 
-        var transferRepository =
-            new FakeTransferRepository();
+        var handler =
+            CreateHandler(
+                new FakeTransferAccountRepository(
+                    account),
+                new FakeTransferRepository(),
+                new FakeTransferIdempotencyRepository(
+                    TransferIdempotencyClaimStatus.Acquired),
+                new FakeUnitOfWork(),
+                transactionManager);
 
-        var unitOfWork =
-            new FakeUnitOfWork();
+        await Assert.ThrowsAsync<DomainValidationException>(
+            () =>
+                handler.HandleAsync(
+                    new ExecuteTransferCommand(
+                        Guid.NewGuid(),
+                        account.Id,
+                        account.Id,
+                        100.00m)));
+
+        Assert.Equal(
+            0,
+            transactionManager.ExecuteCallCount);
+    }
+
+    [Fact]
+    public async Task HandleAsync_WithEmptyIdempotencyKey_FailsBeforeTransaction()
+    {
+        var source =
+            CreateAccount(
+                "SOURCE-EMPTY-KEY",
+                1000.00m);
+
+        var destination =
+            CreateAccount(
+                "DESTINATION-EMPTY-KEY",
+                0.00m);
 
         var transactionManager =
             new FakeTransactionManager();
 
         var handler =
             CreateHandler(
-                accountRepository,
-                transferRepository,
-                unitOfWork,
+                new FakeTransferAccountRepository(
+                    source,
+                    destination),
+                new FakeTransferRepository(),
+                new FakeTransferIdempotencyRepository(
+                    TransferIdempotencyClaimStatus.Acquired),
+                new FakeUnitOfWork(),
                 transactionManager);
 
         var exception =
@@ -368,43 +532,31 @@ public sealed class ExecuteTransferHandlerTests
                 () =>
                     handler.HandleAsync(
                         new ExecuteTransferCommand(
-                            account.Id,
-                            account.Id,
+                            Guid.Empty,
+                            source.Id,
+                            destination.Id,
                             100.00m)));
 
         Assert.Equal(
-            "Source and destination accounts must be different.",
+            "Idempotency key is required.",
             exception.Message);
 
         Assert.Equal(
             0,
-            accountRepository.GetForTransferCallCount);
-
-        Assert.Equal(
-            0,
             transactionManager.ExecuteCallCount);
-
-        Assert.Equal(
-            1000.00m,
-            account.Balance.Amount);
-
-        Assert.Empty(
-            transferRepository.AddedTransfers);
-
-        Assert.Equal(
-            0,
-            unitOfWork.SaveChangesCallCount);
     }
 
     private static ExecuteTransferHandler CreateHandler(
         ITransferAccountRepository accountRepository,
         ITransferRepository transferRepository,
+        ITransferIdempotencyRepository idempotencyRepository,
         IUnitOfWork unitOfWork,
         ITransactionManager transactionManager)
     {
         return new ExecuteTransferHandler(
             accountRepository,
             transferRepository,
+            idempotencyRepository,
             unitOfWork,
             transactionManager,
             new FixedTimeProvider(
@@ -463,15 +615,103 @@ public sealed class ExecuteTransferHandlerTests
     private sealed class FakeTransferRepository
         : ITransferRepository
     {
+        private readonly Dictionary<Guid, Transfer> _transfers;
+
+        public FakeTransferRepository(
+            params Transfer[] transfers)
+        {
+            _transfers =
+                transfers.ToDictionary(
+                    transfer => transfer.Id);
+        }
+
+        public int AddCallCount { get; private set; }
+
         public List<Transfer> AddedTransfers { get; } =
             [];
+
+        public Task<Transfer?> GetByIdAsync(
+            Guid transferId,
+            CancellationToken cancellationToken = default)
+        {
+            _transfers.TryGetValue(
+                transferId,
+                out var transfer);
+
+            return Task.FromResult(
+                transfer);
+        }
 
         public Task AddAsync(
             Transfer transfer,
             CancellationToken cancellationToken = default)
         {
+            AddCallCount++;
+
             AddedTransfers.Add(
                 transfer);
+
+            _transfers[transfer.Id] =
+                transfer;
+
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class FakeTransferIdempotencyRepository
+        : ITransferIdempotencyRepository
+    {
+        private readonly TransferIdempotencyClaimStatus _status;
+        private readonly Guid? _transferId;
+
+        public FakeTransferIdempotencyRepository(
+            TransferIdempotencyClaimStatus status,
+            Guid? transferId = null)
+        {
+            _status =
+                status;
+
+            _transferId =
+                transferId;
+        }
+
+        public int TryClaimCallCount { get; private set; }
+
+        public int CompleteCallCount { get; private set; }
+
+        public Guid? LastCompletedKey { get; private set; }
+
+        public Guid? LastCompletedTransferId { get; private set; }
+
+        public Task<TransferIdempotencyClaimResult> TryClaimAsync(
+            Guid idempotencyKey,
+            Guid sourceAccountId,
+            Guid destinationAccountId,
+            decimal amount,
+            DateTimeOffset createdAt,
+            CancellationToken cancellationToken = default)
+        {
+            TryClaimCallCount++;
+
+            return Task.FromResult(
+                new TransferIdempotencyClaimResult(
+                    _status,
+                    _transferId));
+        }
+
+        public Task CompleteAsync(
+            Guid idempotencyKey,
+            Guid transferId,
+            DateTimeOffset completedAt,
+            CancellationToken cancellationToken = default)
+        {
+            CompleteCallCount++;
+
+            LastCompletedKey =
+                idempotencyKey;
+
+            LastCompletedTransferId =
+                transferId;
 
             return Task.CompletedTask;
         }

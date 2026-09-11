@@ -25,7 +25,9 @@ public static class DependencyInjection
                 options.UseNpgsql(connectionString);
             });
 
-        services.AddScoped<IAccountRepository, EfAccountRepository>();
+        services.AddScoped<
+            IAccountRepository,
+            EfAccountRepository>();
 
         services.AddScoped<
             ITransferAccountRepository,
@@ -34,6 +36,10 @@ public static class DependencyInjection
         services.AddScoped<
             ITransferRepository,
             EfTransferRepository>();
+
+        services.AddScoped<
+            ITransferIdempotencyRepository,
+            EfTransferIdempotencyRepository>();
 
         services.AddScoped<
             IUnitOfWork,
