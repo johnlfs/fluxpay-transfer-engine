@@ -1,6 +1,7 @@
 using FluxPay.Application.Abstractions.Messaging;
 using FluxPay.Application.Abstractions.Persistence;
 using FluxPay.Infrastructure.Persistence;
+using FluxPay.Infrastructure.Persistence.Inbox;
 using FluxPay.Infrastructure.Persistence.Outbox;
 using FluxPay.Infrastructure.Persistence.Repositories;
 using Microsoft.EntityFrameworkCore;
@@ -43,6 +44,10 @@ public static class DependencyInjection
         services.AddScoped<
             ITransferIdempotencyRepository,
             EfTransferIdempotencyRepository>();
+
+        services.AddScoped<
+            IInboxRepository,
+            EfInboxRepository>();
 
         services.AddScoped<
             IOutboxWriter,
