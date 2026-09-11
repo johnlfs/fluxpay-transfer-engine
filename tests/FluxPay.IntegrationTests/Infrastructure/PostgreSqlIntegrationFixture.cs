@@ -60,6 +60,7 @@ public sealed class PostgreSqlIntegrationFixture
 
         await dbContext.Database.ExecuteSqlRawAsync(
             """
+            DELETE FROM consumer_inbox_messages;
             DELETE FROM outbox_messages;
             DELETE FROM transfer_idempotency;
             DELETE FROM transfers;

@@ -59,6 +59,10 @@ public sealed class DatabaseBootstrapTests
             "20260911050555_AddOutboxRetryLifecycle",
             appliedMigrations);
 
+        Assert.Contains(
+            "20260911052348_AddConsumerInbox",
+            appliedMigrations);
+
         Assert.Empty(
             pendingMigrations);
     }

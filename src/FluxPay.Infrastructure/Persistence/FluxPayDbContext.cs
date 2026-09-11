@@ -1,5 +1,6 @@
 using FluxPay.Domain.Accounts;
 using FluxPay.Domain.Transfers;
+using FluxPay.Infrastructure.Persistence.Inbox;
 using FluxPay.Infrastructure.Persistence.Outbox;
 using Microsoft.EntityFrameworkCore;
 
@@ -21,6 +22,9 @@ public sealed class FluxPayDbContext : DbContext
 
     public DbSet<OutboxMessage> OutboxMessages =>
         Set<OutboxMessage>();
+
+    public DbSet<InboxMessage> InboxMessages =>
+        Set<InboxMessage>();
 
     protected override void OnModelCreating(
         ModelBuilder modelBuilder)
