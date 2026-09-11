@@ -26,6 +26,7 @@ public static class DependencyInjection
             });
 
         services.AddScoped<IAccountRepository, EfAccountRepository>();
+        services.AddScoped<ITransferRepository, EfTransferRepository>();
         services.AddScoped<IUnitOfWork, EfUnitOfWork>();
 
         return services;
