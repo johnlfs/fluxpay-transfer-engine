@@ -1,5 +1,6 @@
 using FluxPay.Application.Abstractions.Persistence;
 using FluxPay.Application.Accounts.Exceptions;
+using FluxPay.Application.Common.Time;
 using FluxPay.Domain.Accounts;
 using FluxPay.Domain.ValueObjects;
 
@@ -16,20 +17,28 @@ public sealed class CreateAccountHandler
         IUnitOfWork unitOfWork,
         TimeProvider timeProvider)
     {
-        _accountRepository = accountRepository;
-        _unitOfWork = unitOfWork;
-        _timeProvider = timeProvider;
+        _accountRepository =
+            accountRepository;
+
+        _unitOfWork =
+            unitOfWork;
+
+        _timeProvider =
+            timeProvider;
     }
 
     public async Task<CreateAccountResult> HandleAsync(
         CreateAccountCommand command,
         CancellationToken cancellationToken = default)
     {
-        var account = Account.Create(
-            command.AccountNumber,
-            command.OwnerName,
-            new Money(command.InitialBalance),
-            _timeProvider.GetUtcNow());
+        var account =
+            Account.Create(
+                command.AccountNumber,
+                command.OwnerName,
+                new Money(
+                    command.InitialBalance),
+                UtcTimestamp.GetUtcNow(
+                    _timeProvider));
 
         var accountNumberAlreadyExists =
             await _accountRepository.ExistsByAccountNumberAsync(

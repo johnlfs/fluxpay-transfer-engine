@@ -1,6 +1,7 @@
 using FluxPay.Application.Abstractions.Messaging;
 using FluxPay.Application.Abstractions.Persistence;
 using FluxPay.Application.Accounts.Exceptions;
+using FluxPay.Application.Common.Time;
 using FluxPay.Application.Transfers.Events;
 using FluxPay.Application.Transfers.Exceptions;
 using FluxPay.Domain.Common;
@@ -61,7 +62,8 @@ public sealed class ExecuteTransferHandler
         }
 
         var createdAt =
-            _timeProvider.GetUtcNow();
+            UtcTimestamp.GetUtcNow(
+                _timeProvider);
 
         var transfer =
             Transfer.Create(
@@ -113,7 +115,8 @@ public sealed class ExecuteTransferHandler
 
                     return ToResult(
                         existingTransfer,
-                        isReplay: true);
+                        isReplay:
+                            true);
                 }
 
                 if (
@@ -143,7 +146,8 @@ public sealed class ExecuteTransferHandler
                 }
 
                 var occurredAt =
-                    _timeProvider.GetUtcNow();
+                    UtcTimestamp.GetUtcNow(
+                        _timeProvider);
 
                 accounts.Source.Debit(
                     transfer.Amount,
@@ -188,7 +192,8 @@ public sealed class ExecuteTransferHandler
 
                 return ToResult(
                     transfer,
-                    isReplay: false);
+                    isReplay:
+                        false);
             },
             cancellationToken);
     }

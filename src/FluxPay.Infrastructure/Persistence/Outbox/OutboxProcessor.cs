@@ -1,4 +1,5 @@
 using FluxPay.Application.Abstractions.Messaging;
+using FluxPay.Application.Common.Time;
 using Microsoft.EntityFrameworkCore;
 
 namespace FluxPay.Infrastructure.Persistence.Outbox;
@@ -252,9 +253,8 @@ public sealed class OutboxProcessor
 
     private DateTimeOffset GetUtcNow()
     {
-        return _timeProvider
-            .GetUtcNow()
-            .ToUniversalTime();
+        return UtcTimestamp.GetUtcNow(
+            _timeProvider);
     }
 
     private static string FormatError(

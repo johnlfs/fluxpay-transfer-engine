@@ -1,5 +1,6 @@
 using System.Text.Json;
 using FluxPay.Application.Abstractions.Messaging;
+using FluxPay.Application.Common.Time;
 
 namespace FluxPay.Infrastructure.Persistence.Outbox;
 
@@ -7,7 +8,8 @@ public sealed class EfOutboxWriter
     : IOutboxWriter
 {
     private static readonly JsonSerializerOptions SerializerOptions =
-        new(JsonSerializerDefaults.Web);
+        new(
+            JsonSerializerDefaults.Web);
 
     private readonly FluxPayDbContext _dbContext;
     private readonly TimeProvider _timeProvider;
@@ -77,12 +79,12 @@ public sealed class EfOutboxWriter
                         SerializerOptions),
 
                 OccurredAt =
-                    occurredAt.ToUniversalTime(),
+                    UtcTimestamp.Normalize(
+                        occurredAt),
 
                 CreatedAt =
-                    _timeProvider
-                        .GetUtcNow()
-                        .ToUniversalTime(),
+                    UtcTimestamp.GetUtcNow(
+                        _timeProvider),
 
                 PublishedAt =
                     null,

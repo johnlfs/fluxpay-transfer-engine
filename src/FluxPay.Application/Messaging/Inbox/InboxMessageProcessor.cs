@@ -1,4 +1,5 @@
 using FluxPay.Application.Abstractions.Persistence;
+using FluxPay.Application.Common.Time;
 
 namespace FluxPay.Application.Messaging.Inbox;
 
@@ -89,8 +90,7 @@ public sealed class InboxMessageProcessor
 
     private DateTimeOffset GetUtcNow()
     {
-        return _timeProvider
-            .GetUtcNow()
-            .ToUniversalTime();
+        return UtcTimestamp.GetUtcNow(
+            _timeProvider);
     }
 }
