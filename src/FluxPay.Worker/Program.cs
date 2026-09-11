@@ -1,4 +1,5 @@
 using FluxPay.Application.Abstractions.Messaging;
+using FluxPay.Application.Messaging.Inbox;
 using FluxPay.Infrastructure;
 using FluxPay.Infrastructure.Messaging;
 using FluxPay.Infrastructure.Persistence.Outbox;
@@ -106,6 +107,47 @@ var workerOptions =
 
 workerOptions.Validate();
 
+var consumerOptions =
+    new TransferCompletedConsumerOptions
+    {
+        ConsumerName =
+            builder.Configuration.GetValue<string>(
+                $"{TransferCompletedConsumerOptions.SectionName}:ConsumerName")
+            ?? TransferCompletedConsumerOptions.DefaultConsumerName,
+
+        QueueName =
+            builder.Configuration.GetValue<string>(
+                $"{TransferCompletedConsumerOptions.SectionName}:QueueName")
+            ?? TransferCompletedConsumerOptions.DefaultQueueName,
+
+        DeadLetterExchangeName =
+            builder.Configuration.GetValue<string>(
+                $"{TransferCompletedConsumerOptions.SectionName}:DeadLetterExchangeName")
+            ?? TransferCompletedConsumerOptions.DefaultDeadLetterExchangeName,
+
+        DeadLetterQueueName =
+            builder.Configuration.GetValue<string>(
+                $"{TransferCompletedConsumerOptions.SectionName}:DeadLetterQueueName")
+            ?? TransferCompletedConsumerOptions.DefaultDeadLetterQueueName,
+
+        DeadLetterRoutingKey =
+            builder.Configuration.GetValue<string>(
+                $"{TransferCompletedConsumerOptions.SectionName}:DeadLetterRoutingKey")
+            ?? TransferCompletedConsumerOptions.DefaultDeadLetterRoutingKey,
+
+        ClientProvidedName =
+            builder.Configuration.GetValue<string>(
+                $"{TransferCompletedConsumerOptions.SectionName}:ClientProvidedName")
+            ?? "fluxpay-transfer-completed-consumer",
+
+        PrefetchCount =
+            builder.Configuration.GetValue<int?>(
+                $"{TransferCompletedConsumerOptions.SectionName}:PrefetchCount")
+            ?? 1
+    };
+
+consumerOptions.Validate();
+
 builder.Services.AddInfrastructure(
     connectionString);
 
@@ -115,6 +157,12 @@ builder.Services.AddSingleton(
 builder.Services.AddSingleton(
     rabbitMqOptions);
 
+builder.Services.AddSingleton(
+    workerOptions);
+
+builder.Services.AddSingleton(
+    consumerOptions);
+
 builder.Services.AddSingleton<
     IIntegrationEventPublisher,
     RabbitMqPublisher>();
@@ -122,11 +170,14 @@ builder.Services.AddSingleton<
 builder.Services.AddScoped<
     OutboxProcessor>();
 
-builder.Services.AddSingleton(
-    workerOptions);
+builder.Services.AddScoped<
+    InboxMessageProcessor>();
 
 builder.Services.AddHostedService<
     Worker>();
+
+builder.Services.AddHostedService<
+    TransferCompletedRabbitMqConsumer>();
 
 var host =
     builder.Build();
