@@ -34,7 +34,7 @@ public sealed class ExecuteTransferHandlerTests
                 100.00m);
 
         var accountRepository =
-            new FakeAccountRepository(
+            new FakeTransferAccountRepository(
                 sourceAccount,
                 destinationAccount);
 
@@ -44,11 +44,15 @@ public sealed class ExecuteTransferHandlerTests
         var unitOfWork =
             new FakeUnitOfWork();
 
+        var transactionManager =
+            new FakeTransactionManager();
+
         var handler =
             CreateHandler(
                 accountRepository,
                 transferRepository,
-                unitOfWork);
+                unitOfWork,
+                transactionManager);
 
         var result =
             await handler.HandleAsync(
@@ -117,6 +121,14 @@ public sealed class ExecuteTransferHandlerTests
 
         Assert.Equal(
             1,
+            accountRepository.GetForTransferCallCount);
+
+        Assert.Equal(
+            1,
+            transactionManager.ExecuteCallCount);
+
+        Assert.Equal(
+            1,
             unitOfWork.SaveChangesCallCount);
     }
 
@@ -132,7 +144,7 @@ public sealed class ExecuteTransferHandlerTests
             Guid.NewGuid();
 
         var accountRepository =
-            new FakeAccountRepository(
+            new FakeTransferAccountRepository(
                 destinationAccount);
 
         var transferRepository =
@@ -141,11 +153,15 @@ public sealed class ExecuteTransferHandlerTests
         var unitOfWork =
             new FakeUnitOfWork();
 
+        var transactionManager =
+            new FakeTransactionManager();
+
         var handler =
             CreateHandler(
                 accountRepository,
                 transferRepository,
-                unitOfWork);
+                unitOfWork,
+                transactionManager);
 
         var exception =
             await Assert.ThrowsAsync<AccountNotFoundException>(
@@ -163,6 +179,14 @@ public sealed class ExecuteTransferHandlerTests
         Assert.Equal(
             100.00m,
             destinationAccount.Balance.Amount);
+
+        Assert.Equal(
+            1,
+            accountRepository.GetForTransferCallCount);
+
+        Assert.Equal(
+            1,
+            transactionManager.ExecuteCallCount);
 
         Assert.Empty(
             transferRepository.AddedTransfers);
@@ -184,7 +208,7 @@ public sealed class ExecuteTransferHandlerTests
             Guid.NewGuid();
 
         var accountRepository =
-            new FakeAccountRepository(
+            new FakeTransferAccountRepository(
                 sourceAccount);
 
         var transferRepository =
@@ -193,11 +217,15 @@ public sealed class ExecuteTransferHandlerTests
         var unitOfWork =
             new FakeUnitOfWork();
 
+        var transactionManager =
+            new FakeTransactionManager();
+
         var handler =
             CreateHandler(
                 accountRepository,
                 transferRepository,
-                unitOfWork);
+                unitOfWork,
+                transactionManager);
 
         var exception =
             await Assert.ThrowsAsync<AccountNotFoundException>(
@@ -215,6 +243,14 @@ public sealed class ExecuteTransferHandlerTests
         Assert.Equal(
             1000.00m,
             sourceAccount.Balance.Amount);
+
+        Assert.Equal(
+            1,
+            accountRepository.GetForTransferCallCount);
+
+        Assert.Equal(
+            1,
+            transactionManager.ExecuteCallCount);
 
         Assert.Empty(
             transferRepository.AddedTransfers);
@@ -238,7 +274,7 @@ public sealed class ExecuteTransferHandlerTests
                 100.00m);
 
         var accountRepository =
-            new FakeAccountRepository(
+            new FakeTransferAccountRepository(
                 sourceAccount,
                 destinationAccount);
 
@@ -248,11 +284,15 @@ public sealed class ExecuteTransferHandlerTests
         var unitOfWork =
             new FakeUnitOfWork();
 
+        var transactionManager =
+            new FakeTransactionManager();
+
         var handler =
             CreateHandler(
                 accountRepository,
                 transferRepository,
-                unitOfWork);
+                unitOfWork,
+                transactionManager);
 
         var exception =
             await Assert.ThrowsAsync<InsufficientFundsException>(
@@ -279,6 +319,14 @@ public sealed class ExecuteTransferHandlerTests
             100.00m,
             destinationAccount.Balance.Amount);
 
+        Assert.Equal(
+            1,
+            accountRepository.GetForTransferCallCount);
+
+        Assert.Equal(
+            1,
+            transactionManager.ExecuteCallCount);
+
         Assert.Empty(
             transferRepository.AddedTransfers);
 
@@ -288,7 +336,7 @@ public sealed class ExecuteTransferHandlerTests
     }
 
     [Fact]
-    public async Task HandleAsync_WithSameSourceAndDestination_FailsBeforeRepositoryAccess()
+    public async Task HandleAsync_WithSameSourceAndDestination_FailsBeforeTransaction()
     {
         var account =
             CreateAccount(
@@ -296,7 +344,7 @@ public sealed class ExecuteTransferHandlerTests
                 1000.00m);
 
         var accountRepository =
-            new FakeAccountRepository(
+            new FakeTransferAccountRepository(
                 account);
 
         var transferRepository =
@@ -305,11 +353,15 @@ public sealed class ExecuteTransferHandlerTests
         var unitOfWork =
             new FakeUnitOfWork();
 
+        var transactionManager =
+            new FakeTransactionManager();
+
         var handler =
             CreateHandler(
                 accountRepository,
                 transferRepository,
-                unitOfWork);
+                unitOfWork,
+                transactionManager);
 
         var exception =
             await Assert.ThrowsAsync<DomainValidationException>(
@@ -326,7 +378,11 @@ public sealed class ExecuteTransferHandlerTests
 
         Assert.Equal(
             0,
-            accountRepository.GetByIdCallCount);
+            accountRepository.GetForTransferCallCount);
+
+        Assert.Equal(
+            0,
+            transactionManager.ExecuteCallCount);
 
         Assert.Equal(
             1000.00m,
@@ -341,14 +397,16 @@ public sealed class ExecuteTransferHandlerTests
     }
 
     private static ExecuteTransferHandler CreateHandler(
-        IAccountRepository accountRepository,
+        ITransferAccountRepository accountRepository,
         ITransferRepository transferRepository,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork,
+        ITransactionManager transactionManager)
     {
         return new ExecuteTransferHandler(
             accountRepository,
             transferRepository,
             unitOfWork,
+            transactionManager,
             new FixedTimeProvider(
                 FixedUtcNow));
     }
@@ -364,12 +422,12 @@ public sealed class ExecuteTransferHandlerTests
             FixedUtcNow.AddDays(-1));
     }
 
-    private sealed class FakeAccountRepository
-        : IAccountRepository
+    private sealed class FakeTransferAccountRepository
+        : ITransferAccountRepository
     {
         private readonly Dictionary<Guid, Account> _accounts;
 
-        public FakeAccountRepository(
+        public FakeTransferAccountRepository(
             params Account[] accounts)
         {
             _accounts =
@@ -377,44 +435,28 @@ public sealed class ExecuteTransferHandlerTests
                     account => account.Id);
         }
 
-        public int GetByIdCallCount { get; private set; }
+        public int GetForTransferCallCount { get; private set; }
 
-        public Task<bool> ExistsByAccountNumberAsync(
-            string accountNumber,
+        public Task<(Account? Source, Account? Destination)> GetForTransferAsync(
+            Guid sourceAccountId,
+            Guid destinationAccountId,
             CancellationToken cancellationToken = default)
         {
-            var exists =
-                _accounts.Values.Any(
-                    account =>
-                        account.AccountNumber == accountNumber);
-
-            return Task.FromResult(
-                exists);
-        }
-
-        public Task<Account?> GetByIdAsync(
-            Guid accountId,
-            CancellationToken cancellationToken = default)
-        {
-            GetByIdCallCount++;
+            GetForTransferCallCount++;
 
             _accounts.TryGetValue(
-                accountId,
-                out var account);
+                sourceAccountId,
+                out var source);
+
+            _accounts.TryGetValue(
+                destinationAccountId,
+                out var destination);
 
             return Task.FromResult(
-                account);
-        }
-
-        public Task AddAsync(
-            Account account,
-            CancellationToken cancellationToken = default)
-        {
-            _accounts.Add(
-                account.Id,
-                account);
-
-            return Task.CompletedTask;
+                (
+                    Source: source,
+                    Destination: destination
+                ));
         }
     }
 
@@ -447,6 +489,22 @@ public sealed class ExecuteTransferHandlerTests
 
             return Task.FromResult(
                 1);
+        }
+    }
+
+    private sealed class FakeTransactionManager
+        : ITransactionManager
+    {
+        public int ExecuteCallCount { get; private set; }
+
+        public async Task<T> ExecuteAsync<T>(
+            Func<CancellationToken, Task<T>> operation,
+            CancellationToken cancellationToken = default)
+        {
+            ExecuteCallCount++;
+
+            return await operation(
+                cancellationToken);
         }
     }
 

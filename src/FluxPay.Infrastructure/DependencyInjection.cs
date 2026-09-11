@@ -26,8 +26,22 @@ public static class DependencyInjection
             });
 
         services.AddScoped<IAccountRepository, EfAccountRepository>();
-        services.AddScoped<ITransferRepository, EfTransferRepository>();
-        services.AddScoped<IUnitOfWork, EfUnitOfWork>();
+
+        services.AddScoped<
+            ITransferAccountRepository,
+            EfTransferAccountRepository>();
+
+        services.AddScoped<
+            ITransferRepository,
+            EfTransferRepository>();
+
+        services.AddScoped<
+            IUnitOfWork,
+            EfUnitOfWork>();
+
+        services.AddScoped<
+            ITransactionManager,
+            EfTransactionManager>();
 
         return services;
     }

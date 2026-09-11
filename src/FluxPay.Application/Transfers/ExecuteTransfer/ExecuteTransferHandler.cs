@@ -7,20 +7,23 @@ namespace FluxPay.Application.Transfers.ExecuteTransfer;
 
 public sealed class ExecuteTransferHandler
 {
-    private readonly IAccountRepository _accountRepository;
+    private readonly ITransferAccountRepository _accountRepository;
     private readonly ITransferRepository _transferRepository;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly ITransactionManager _transactionManager;
     private readonly TimeProvider _timeProvider;
 
     public ExecuteTransferHandler(
-        IAccountRepository accountRepository,
+        ITransferAccountRepository accountRepository,
         ITransferRepository transferRepository,
         IUnitOfWork unitOfWork,
+        ITransactionManager transactionManager,
         TimeProvider timeProvider)
     {
         _accountRepository = accountRepository;
         _transferRepository = transferRepository;
         _unitOfWork = unitOfWork;
+        _transactionManager = transactionManager;
         _timeProvider = timeProvider;
     }
 
@@ -28,7 +31,7 @@ public sealed class ExecuteTransferHandler
         ExecuteTransferCommand command,
         CancellationToken cancellationToken = default)
     {
-        var occurredAt =
+        var createdAt =
             _timeProvider.GetUtcNow();
 
         var transfer =
@@ -36,55 +39,59 @@ public sealed class ExecuteTransferHandler
                 command.SourceAccountId,
                 command.DestinationAccountId,
                 new Money(command.Amount),
-                occurredAt);
+                createdAt);
 
-        var sourceAccount =
-            await _accountRepository.GetByIdAsync(
-                command.SourceAccountId,
-                cancellationToken);
+        return await _transactionManager.ExecuteAsync(
+            async transactionCancellationToken =>
+            {
+                var accounts =
+                    await _accountRepository.GetForTransferAsync(
+                        command.SourceAccountId,
+                        command.DestinationAccountId,
+                        transactionCancellationToken);
 
-        if (sourceAccount is null)
-        {
-            throw new AccountNotFoundException(
-                command.SourceAccountId);
-        }
+                if (accounts.Source is null)
+                {
+                    throw new AccountNotFoundException(
+                        command.SourceAccountId);
+                }
 
-        var destinationAccount =
-            await _accountRepository.GetByIdAsync(
-                command.DestinationAccountId,
-                cancellationToken);
+                if (accounts.Destination is null)
+                {
+                    throw new AccountNotFoundException(
+                        command.DestinationAccountId);
+                }
 
-        if (destinationAccount is null)
-        {
-            throw new AccountNotFoundException(
-                command.DestinationAccountId);
-        }
+                var occurredAt =
+                    _timeProvider.GetUtcNow();
 
-        sourceAccount.Debit(
-            transfer.Amount,
-            occurredAt);
+                accounts.Source.Debit(
+                    transfer.Amount,
+                    occurredAt);
 
-        destinationAccount.Credit(
-            transfer.Amount,
-            occurredAt);
+                accounts.Destination.Credit(
+                    transfer.Amount,
+                    occurredAt);
 
-        transfer.Complete(
-            occurredAt);
+                transfer.Complete(
+                    occurredAt);
 
-        await _transferRepository.AddAsync(
-            transfer,
+                await _transferRepository.AddAsync(
+                    transfer,
+                    transactionCancellationToken);
+
+                await _unitOfWork.SaveChangesAsync(
+                    transactionCancellationToken);
+
+                return new ExecuteTransferResult(
+                    transfer.Id,
+                    transfer.SourceAccountId,
+                    transfer.DestinationAccountId,
+                    transfer.Amount.Amount,
+                    transfer.Status,
+                    transfer.CreatedAt,
+                    transfer.FinalizedAt);
+            },
             cancellationToken);
-
-        await _unitOfWork.SaveChangesAsync(
-            cancellationToken);
-
-        return new ExecuteTransferResult(
-            transfer.Id,
-            transfer.SourceAccountId,
-            transfer.DestinationAccountId,
-            transfer.Amount.Amount,
-            transfer.Status,
-            transfer.CreatedAt,
-            transfer.FinalizedAt);
     }
 }
