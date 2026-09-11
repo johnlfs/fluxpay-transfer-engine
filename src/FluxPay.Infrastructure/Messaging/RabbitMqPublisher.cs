@@ -1,5 +1,6 @@
 using System.Text;
 using FluxPay.Application.Abstractions.Messaging;
+using FluxPay.Infrastructure.Observability;
 using RabbitMQ.Client;
 
 namespace FluxPay.Infrastructure.Messaging;
@@ -77,6 +78,12 @@ public sealed class RabbitMqPublisher
             await EnsureConnectionAsync(
                 cancellationToken);
 
+            var headers =
+                new Dictionary<string, object?>();
+
+            TraceContextHeaders.Inject(
+                headers);
+
             var properties =
                 new BasicProperties
                 {
@@ -101,7 +108,12 @@ public sealed class RabbitMqPublisher
                         eventType,
 
                     AppId =
-                        "fluxpay"
+                        "fluxpay",
+
+                    Headers =
+                        headers.Count == 0
+                            ? null
+                            : headers
                 };
 
             var body =

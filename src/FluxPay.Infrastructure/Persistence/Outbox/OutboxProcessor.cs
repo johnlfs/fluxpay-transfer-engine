@@ -1,5 +1,7 @@
+using System.Diagnostics;
 using FluxPay.Application.Abstractions.Messaging;
 using FluxPay.Application.Common.Time;
+using FluxPay.Infrastructure.Observability;
 using Microsoft.EntityFrameworkCore;
 
 namespace FluxPay.Infrastructure.Persistence.Outbox;
@@ -162,6 +164,10 @@ public sealed class OutboxProcessor
 
             message.AttemptCount++;
 
+            using var publishActivity =
+                StartPublishActivity(
+                    message);
+
             try
             {
                 await _publisher.PublishAsync(
@@ -170,6 +176,9 @@ public sealed class OutboxProcessor
                     message.AggregateId,
                     message.Payload,
                     cancellationToken);
+
+                publishActivity?.SetStatus(
+                    ActivityStatusCode.Ok);
 
                 message.PublishedAt =
                     GetUtcNow();
@@ -198,6 +207,16 @@ public sealed class OutboxProcessor
             }
             catch (Exception exception)
             {
+                publishActivity?.SetStatus(
+                    ActivityStatusCode.Error,
+                    exception.Message);
+
+                publishActivity?.SetTag(
+                    "error.type",
+                    exception
+                        .GetType()
+                        .FullName);
+
                 message.LastError =
                     FormatError(
                         exception);
@@ -249,6 +268,82 @@ public sealed class OutboxProcessor
         {
             _dbContext.ChangeTracker.Clear();
         }
+    }
+
+    private static Activity? StartPublishActivity(
+        OutboxMessage message)
+    {
+        var parentContext =
+            default(
+                ActivityContext);
+
+        var hasPersistedParent =
+            !string.IsNullOrWhiteSpace(
+                message.TraceParent)
+            && ActivityContext.TryParse(
+                message.TraceParent,
+                message.TraceState,
+                isRemote:
+                    true,
+                out parentContext);
+
+        var activityName =
+            $"{message.EventType} publish";
+
+        var activity =
+            hasPersistedParent
+                ? MessagingActivitySource.Source
+                    .StartActivity(
+                        activityName,
+                        ActivityKind.Producer,
+                        parentContext)
+                : MessagingActivitySource.Source
+                    .StartActivity(
+                        activityName,
+                        ActivityKind.Producer);
+
+        if (activity is null)
+        {
+            return null;
+        }
+
+        activity.SetTag(
+            "messaging.system",
+            "rabbitmq");
+
+        activity.SetTag(
+            "messaging.operation.type",
+            "publish");
+
+        activity.SetTag(
+            "messaging.message.id",
+            message.Id.ToString(
+                "D"));
+
+        activity.SetTag(
+            "fluxpay.event.type",
+            message.EventType);
+
+        activity.SetTag(
+            "fluxpay.aggregate.id",
+            message.AggregateId.ToString(
+                "D"));
+
+        activity.SetTag(
+            "fluxpay.outbox.attempt",
+            message.AttemptCount);
+
+        if (
+            !string.IsNullOrWhiteSpace(
+                message.TraceParent)
+            && !hasPersistedParent)
+        {
+            activity.SetTag(
+                "fluxpay.trace_context.invalid",
+                true);
+        }
+
+        return activity;
     }
 
     private DateTimeOffset GetUtcNow()
