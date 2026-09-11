@@ -1,4 +1,5 @@
 using FluxPay.Api.ErrorHandling;
+using FluxPay.Api.Health;
 using FluxPay.Application.Accounts.CreateAccount;
 using FluxPay.Application.Accounts.GetAccount;
 using FluxPay.Application.Transfers.ExecuteTransfer;
@@ -76,7 +77,10 @@ app.MapHealthChecks(
     {
         Predicate =
             _ =>
-                false
+                false,
+
+        ResponseWriter =
+            HealthCheckResponseWriter.WriteAsync
     });
 
 app.MapHealthChecks(
@@ -86,7 +90,10 @@ app.MapHealthChecks(
         Predicate =
             registration =>
                 registration.Tags.Contains(
-                    "ready")
+                    "ready"),
+
+        ResponseWriter =
+            HealthCheckResponseWriter.WriteAsync
     });
 
 app.MapControllers();
