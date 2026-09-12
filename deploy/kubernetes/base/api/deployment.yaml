@@ -1,0 +1,140 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fluxpay-api
+  namespace: fluxpay
+  labels:
+    app.kubernetes.io/name: fluxpay-api
+    app.kubernetes.io/component: api
+    app.kubernetes.io/part-of: fluxpay
+
+spec:
+  replicas: 2
+
+  strategy:
+    type: RollingUpdate
+
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+
+  minReadySeconds: 5
+
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fluxpay-api
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: fluxpay-api
+        app.kubernetes.io/component: api
+        app.kubernetes.io/part-of: fluxpay
+
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1654
+        runAsGroup: 1654
+
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+        - name: api
+          image: fluxpay-api:local
+          imagePullPolicy: IfNotPresent
+
+          securityContext:
+            allowPrivilegeEscalation: false
+
+            capabilities:
+              drop:
+                - ALL
+
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+
+          env:
+            - name: ASPNETCORE_ENVIRONMENT
+              value: Production
+
+            - name: POSTGRES_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: fluxpay-config
+                  key: POSTGRES_HOST
+
+            - name: POSTGRES_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: fluxpay-config
+                  key: POSTGRES_PORT
+
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: fluxpay-config
+                  key: POSTGRES_DB
+
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: fluxpay-config
+                  key: POSTGRES_USER
+
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: fluxpay-secrets
+                  key: POSTGRES_PASSWORD
+
+            - name: FLUXPAY_DB_CONNECTION
+              value: >-
+                Host=$(POSTGRES_HOST);
+                Port=$(POSTGRES_PORT);
+                Database=$(POSTGRES_DB);
+                Username=$(POSTGRES_USER);
+                Password=$(POSTGRES_PASSWORD);
+                Include Error Detail=false
+
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: http
+
+            periodSeconds: 3
+            timeoutSeconds: 3
+            failureThreshold: 20
+
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+          resources:
+            requests:
+              cpu: 50m
+              memory: 96Mi
+
+            limits:
+              cpu: 500m
+              memory: 384Mi

@@ -96,6 +96,40 @@ jobs:
           config
           --quiet
 
+      - name: Show Kubernetes environment
+        run: |
+          kubectl version --client
+          kind version
+
+      - name: Render Kubernetes manifests
+        run: >
+          kubectl kustomize
+          deploy/kubernetes/base
+          > /tmp/fluxpay-kubernetes-rendered.yaml
+
+      - name: Create Kubernetes validation cluster
+        run: >
+          kind create cluster
+          --name fluxpay-ci
+          --config deploy/kubernetes/kind/cluster.yaml
+          --wait 120s
+
+      - name: Create Kubernetes validation namespace
+        run: >
+          kubectl apply
+          -f deploy/kubernetes/base/namespace.yaml
+
+      - name: Validate Kubernetes manifests
+        run: |
+          kubectl apply --dry-run=server -f /tmp/fluxpay-kubernetes-rendered.yaml
+          kubectl apply --dry-run=server -f deploy/kubernetes/secret.example.yaml
+
+      - name: Delete Kubernetes validation cluster
+        if: always()
+        run: >
+          kind delete cluster
+          --name fluxpay-ci
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4

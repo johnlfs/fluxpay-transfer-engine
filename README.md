@@ -39,6 +39,9 @@ The system combines a synchronous transactional command path with an asynchronou
 - RabbitMQ 4
 - Docker
 - Docker Compose
+- Kubernetes
+- kind
+- Kustomize
 - OpenTelemetry
 - Prometheus
 - Grafana
@@ -564,6 +567,37 @@ Runtime services require their corresponding environment variables.
 
 ---
 
+## Kubernetes
+
+FluxPay includes a reproducible local Kubernetes laboratory under `deploy/kubernetes`.
+
+The deployment models the application responsibilities explicitly:
+
+- two stateless API replicas behind a Service;
+- one background Worker Deployment;
+- a one-shot Migrator Job;
+- persistent PostgreSQL and RabbitMQ StatefulSets;
+- ConfigMap/Secret separation;
+- non-root workloads;
+- health probes and resource limits;
+- local image loading into kind.
+
+The complete environment can be created from scratch with:
+
+    ./scripts/kubernetes-bootstrap-kind.sh
+
+The bootstrap was validated after deleting the entire kind cluster. It recreated the cluster, persistent workloads, Secret, all 7 database migrations, API replicas and Worker, then finished with healthy API and RabbitMQ checks.
+
+The Kubernetes environment was also validated with a real transfer through the complete path:
+
+    API -> PostgreSQL -> Transactional Outbox -> Worker -> RabbitMQ -> Consumer Inbox
+
+The replay of the same request with the same `Idempotency-Key` returned the same transfer without moving the balance twice.
+
+For manifests, architecture, persistence tests, E2E evidence and production considerations, see [the Kubernetes deployment guide](deploy/kubernetes/README.md).
+
+---
+
 ## Repository Structure
 
     src/
@@ -582,6 +616,7 @@ Runtime services require their corresponding environment variables.
 
     deploy/
       observability/
+      kubernetes/
 
     docs/
       performance/
@@ -655,6 +690,9 @@ Uma transferência no FluxPay deve:
 - RabbitMQ 4
 - Docker
 - Docker Compose
+- Kubernetes
+- kind
+- Kustomize
 - OpenTelemetry
 - Prometheus
 - Grafana
@@ -977,6 +1015,37 @@ E:
 
 ---
 
+## Kubernetes
+
+O FluxPay inclui um laboratório Kubernetes local e reproduzível em `deploy/kubernetes`.
+
+A implantação representa explicitamente as responsabilidades da aplicação:
+
+- duas réplicas stateless da API atrás de um Service;
+- um Worker em Deployment;
+- um Migrator executado como Job;
+- PostgreSQL e RabbitMQ persistentes em StatefulSets;
+- separação entre ConfigMap e Secret;
+- workloads executados como non-root;
+- health probes e limites de recursos;
+- carregamento das imagens locais no kind.
+
+Todo o ambiente pode ser criado do zero com:
+
+    ./scripts/kubernetes-bootstrap-kind.sh
+
+O bootstrap foi validado após excluir completamente o cluster kind. Ele recriou o cluster, workloads persistentes, Secret, as 7 migrations do banco, as réplicas da API e o Worker, terminando com API e RabbitMQ saudáveis.
+
+O ambiente Kubernetes também foi validado com uma transferência real pelo fluxo completo:
+
+    API -> PostgreSQL -> Transactional Outbox -> Worker -> RabbitMQ -> Consumer Inbox
+
+O replay da mesma requisição com a mesma `Idempotency-Key` retornou a mesma transferência sem movimentar o saldo duas vezes.
+
+Para manifests, arquitetura, testes de persistência, evidências E2E e considerações de produção, consulte o [guia de implantação Kubernetes](deploy/kubernetes/README.md).
+
+---
+
 ## Estrutura do Projeto
 
     src/
@@ -995,6 +1064,7 @@ E:
 
     deploy/
       observability/
+      kubernetes/
 
     docs/
       performance/

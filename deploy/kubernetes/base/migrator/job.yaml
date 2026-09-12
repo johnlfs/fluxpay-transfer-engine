@@ -1,0 +1,91 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: fluxpay-migrator
+  namespace: fluxpay
+  labels:
+    app.kubernetes.io/name: fluxpay-migrator
+    app.kubernetes.io/component: migration
+    app.kubernetes.io/part-of: fluxpay
+
+spec:
+  backoffLimit: 3
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: fluxpay-migrator
+        app.kubernetes.io/component: migration
+        app.kubernetes.io/part-of: fluxpay
+
+    spec:
+      restartPolicy: Never
+
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1654
+        runAsGroup: 1654
+
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+        - name: migrator
+          image: fluxpay-migrator:local
+          imagePullPolicy: IfNotPresent
+
+          securityContext:
+            allowPrivilegeEscalation: false
+
+            capabilities:
+              drop:
+                - ALL
+
+          env:
+            - name: POSTGRES_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: fluxpay-config
+                  key: POSTGRES_HOST
+
+            - name: POSTGRES_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: fluxpay-config
+                  key: POSTGRES_PORT
+
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: fluxpay-config
+                  key: POSTGRES_DB
+
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: fluxpay-config
+                  key: POSTGRES_USER
+
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: fluxpay-secrets
+                  key: POSTGRES_PASSWORD
+
+            - name: FLUXPAY_DB_CONNECTION
+              value: >-
+                Host=$(POSTGRES_HOST);
+                Port=$(POSTGRES_PORT);
+                Database=$(POSTGRES_DB);
+                Username=$(POSTGRES_USER);
+                Password=$(POSTGRES_PASSWORD);
+                Include Error Detail=false
+
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+
+            limits:
+              cpu: 500m
+              memory: 256Mi
