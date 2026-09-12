@@ -35,6 +35,11 @@ FROM mcr.microsoft.com/dotnet/runtime:10.0 AS final
 
 WORKDIR /app
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        libgssapi-krb5-2 \
+    && rm -rf /var/lib/apt/lists/*
+
 ENV DOTNET_NOLOGO=true \
     DOTNET_CLI_TELEMETRY_OPTOUT=true
 
