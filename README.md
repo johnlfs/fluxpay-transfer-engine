@@ -271,7 +271,7 @@ Messages that exhaust the retry policy are routed to dead-letter handling.
 
 ## Observability
 
-FluxPay includes a complete observability stack.
+FluxPay includes a complete observability stack in the Docker Compose environment.
 
 Components:
 
@@ -280,6 +280,8 @@ Components:
 - Prometheus;
 - Grafana;
 - Grafana Tempo.
+
+API and Worker remain instrumented with OpenTelemetry in every environment. OTLP exporters are registered only when `OTEL_EXPORTER_OTLP_ENDPOINT` is configured. The base Kubernetes laboratory intentionally does not deploy the observability backend stack.
 
 The application exposes metrics for:
 
@@ -867,7 +869,7 @@ Isso oferece:
 
 ## Observabilidade
 
-A stack inclui:
+O ambiente Docker Compose inclui a stack completa:
 
 - OpenTelemetry;
 - OpenTelemetry Collector;
@@ -875,7 +877,9 @@ A stack inclui:
 - Grafana;
 - Tempo.
 
-API e Worker exportam métricas e traces.
+API e Worker permanecem instrumentados com OpenTelemetry em qualquer ambiente. Os exporters OTLP são registrados somente quando `OTEL_EXPORTER_OTLP_ENDPOINT` está configurado. O laboratório Kubernetes base não implanta deliberadamente a stack de backend de observabilidade.
+
+No Docker Compose, API e Worker exportam métricas e traces para o OpenTelemetry Collector.
 
 ---
 

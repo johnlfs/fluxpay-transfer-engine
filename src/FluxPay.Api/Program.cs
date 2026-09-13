@@ -16,6 +16,10 @@ var builder =
     WebApplication.CreateBuilder(
         args);
 
+var otlpEndpoint =
+    builder.Configuration[
+        "OTEL_EXPORTER_OTLP_ENDPOINT"];
+
 var connectionString =
     builder.Configuration[
         "FLUXPAY_DB_CONNECTION"];
@@ -78,6 +82,7 @@ builder.Services
                         .ToString()))
     .WithMetrics(
         metrics =>
+        {
             metrics
                 .AddMeter(
                     ApiMetrics.MeterName)
@@ -85,10 +90,18 @@ builder.Services
                     "Microsoft.AspNetCore.Hosting")
                 .AddMeter(
                     "Microsoft.AspNetCore.Server.Kestrel")
-                .AddRuntimeInstrumentation()
-                .AddOtlpExporter())
+                .AddRuntimeInstrumentation();
+
+            if (
+                !string.IsNullOrWhiteSpace(
+                    otlpEndpoint))
+            {
+                metrics.AddOtlpExporter();
+            }
+        })
     .WithTracing(
         tracing =>
+        {
             tracing
                 .AddAspNetCoreInstrumentation(
                     options =>
@@ -100,8 +113,15 @@ builder.Services
                                     .Path
                                     .StartsWithSegments(
                                         "/health");
-                    })
-                .AddOtlpExporter());
+                    });
+
+            if (
+                !string.IsNullOrWhiteSpace(
+                    otlpEndpoint))
+            {
+                tracing.AddOtlpExporter();
+            }
+        });
 
 var app =
     builder.Build();

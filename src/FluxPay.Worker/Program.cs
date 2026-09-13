@@ -53,6 +53,10 @@ var builder =
     WebApplication.CreateBuilder(
         args);
 
+var otlpEndpoint =
+    builder.Configuration[
+        "OTEL_EXPORTER_OTLP_ENDPOINT"];
+
 var connectionString =
     Environment.GetEnvironmentVariable(
         "FLUXPAY_DB_CONNECTION");
@@ -245,17 +249,33 @@ builder.Services
                         .ToString()))
     .WithMetrics(
         metrics =>
+        {
             metrics
                 .AddMeter(
                     WorkerMetrics.MeterName)
-                .AddRuntimeInstrumentation()
-                .AddOtlpExporter())
+                .AddRuntimeInstrumentation();
+
+            if (
+                !string.IsNullOrWhiteSpace(
+                    otlpEndpoint))
+            {
+                metrics.AddOtlpExporter();
+            }
+        })
     .WithTracing(
         tracing =>
+        {
             tracing
                 .AddSource(
-                    MessagingActivitySource.Name)
-                .AddOtlpExporter());
+                    MessagingActivitySource.Name);
+
+            if (
+                !string.IsNullOrWhiteSpace(
+                    otlpEndpoint))
+            {
+                tracing.AddOtlpExporter();
+            }
+        });
 
 builder.Services.AddHostedService<
     Worker>();

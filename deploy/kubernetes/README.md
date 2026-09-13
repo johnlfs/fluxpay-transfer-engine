@@ -279,6 +279,14 @@ kind delete cluster --name fluxpay
 
 This removes only the kind Kubernetes laboratory. It does not remove the separate Docker Compose environment or its volumes.
 
+## Observability Scope
+
+The base Kubernetes laboratory intentionally does not deploy OpenTelemetry Collector, Prometheus, Grafana or Tempo.
+
+API and Worker retain their OpenTelemetry instrumentation, but OTLP exporters are registered only when `OTEL_EXPORTER_OTLP_ENDPOINT` is explicitly configured.
+
+The Docker Compose environment provides the complete local observability stack. A Kubernetes environment that requires telemetry export should provide an external or in-cluster OTLP collector and configure the application workloads accordingly.
+
 ## Production Considerations
 
 This setup is intentionally a local portfolio laboratory.
@@ -540,6 +548,14 @@ kind delete cluster --name fluxpay
 ```
 
 Esse comando remove apenas o laboratório Kubernetes do kind. Ele não remove o ambiente Docker Compose separado nem seus volumes.
+
+## Escopo de Observabilidade
+
+O laboratório Kubernetes base deliberadamente não implanta OpenTelemetry Collector, Prometheus, Grafana ou Tempo.
+
+A API e o Worker mantêm sua instrumentação OpenTelemetry, mas os exporters OTLP são registrados somente quando `OTEL_EXPORTER_OTLP_ENDPOINT` é configurado explicitamente.
+
+O ambiente Docker Compose fornece a stack local completa de observabilidade. Um ambiente Kubernetes que necessite exportar telemetria deve fornecer um collector OTLP externo ou dentro do cluster e configurar os workloads da aplicação para utilizá-lo.
 
 ## Considerações para Produção
 
