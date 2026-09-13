@@ -420,8 +420,8 @@ The project currently includes:
 
 | Suite | Tests |
 | --- | ---: |
-| Unit | 55 |
-| Integration | 37 |
+| Unit | 57 |
+| Integration | 50 |
 | Architecture | 7 |
 
 Integration tests use Testcontainers to create isolated infrastructure.
@@ -462,6 +462,9 @@ The CI pipeline performs:
         |
         v
     Docker Compose validation
+        |
+        v
+    Kubernetes manifest validation
         |
         v
     Upload TRX test artifacts
@@ -600,6 +603,16 @@ Runtime services require their corresponding environment variables.
 
 ---
 
+## Security Scope
+
+FluxPay is a backend engineering portfolio laboratory, not a production public payment API.
+
+The HTTP API intentionally does not implement authentication, authorization or application-level rate limiting. Idempotency protects transfer semantics, but it does not protect the service against abusive request volume.
+
+A production deployment must add an authenticated trust boundary, authorization, rate limiting or quotas, TLS at the ingress or gateway layer, and the security controls required by the organization threat model.
+
+---
+
 ## Kubernetes
 
 FluxPay includes a reproducible local Kubernetes laboratory under `deploy/kubernetes`.
@@ -619,7 +632,7 @@ The complete environment can be created from scratch with:
 
     ./scripts/kubernetes-bootstrap-kind.sh
 
-The bootstrap was validated after deleting the entire kind cluster. It recreated the cluster, persistent workloads, Secret, all 7 database migrations, API replicas and Worker, then finished with healthy API and RabbitMQ checks.
+The bootstrap was validated after deleting the entire kind cluster. It recreated the cluster, persistent workloads, Secret, all database migrations, API replicas and Worker, then finished with healthy API and RabbitMQ checks.
 
 The Kubernetes environment was also validated with a real transfer through the complete path:
 
@@ -987,8 +1000,8 @@ Atualmente:
 
 | Suite | Quantidade |
 | --- | ---: |
-| Unitários | 55 |
-| Integração | 37 |
+| Unitários | 57 |
+| Integração | 50 |
 | Arquitetura | 7 |
 
 Os testes de integração utilizam Testcontainers.
@@ -1009,6 +1022,7 @@ O GitHub Actions executa:
 - testes de integração;
 - testes arquiteturais;
 - validação do Docker Compose;
+- validação dos manifests Kubernetes;
 - upload dos resultados TRX.
 
 O workflow roda em pushes e pull requests para `main`.
@@ -1081,6 +1095,16 @@ E:
 
 ---
 
+## Escopo de Segurança
+
+O FluxPay é um laboratório de engenharia backend e projeto de portfólio, não uma API pública de pagamentos pronta para produção.
+
+A API HTTP deliberadamente não implementa autenticação, autorização ou rate limiting em nível de aplicação. A idempotência protege a semântica das transferências, mas não protege o serviço contra abuso de volume de requisições.
+
+Um ambiente de produção deve adicionar uma fronteira autenticada, autorização, rate limiting ou quotas, TLS na camada de ingress ou gateway e os controles de segurança exigidos pelo modelo de ameaças da organização.
+
+---
+
 ## Kubernetes
 
 O FluxPay inclui um laboratório Kubernetes local e reproduzível em `deploy/kubernetes`.
@@ -1100,7 +1124,7 @@ Todo o ambiente pode ser criado do zero com:
 
     ./scripts/kubernetes-bootstrap-kind.sh
 
-O bootstrap foi validado após excluir completamente o cluster kind. Ele recriou o cluster, workloads persistentes, Secret, as 7 migrations do banco, as réplicas da API e o Worker, terminando com API e RabbitMQ saudáveis.
+O bootstrap foi validado após excluir completamente o cluster kind. Ele recriou o cluster, workloads persistentes, Secret, todas as migrations do banco, as réplicas da API e o Worker, terminando com API e RabbitMQ saudáveis.
 
 O ambiente Kubernetes também foi validado com uma transferência real pelo fluxo completo:
 

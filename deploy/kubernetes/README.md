@@ -107,6 +107,8 @@ The bootstrap reads `POSTGRES_PASSWORD` and `RABBITMQ_PASSWORD` from `.env` and 
 
 `deploy/kubernetes/secret.example.yaml` contains placeholders only.
 
+Application workloads receive PostgreSQL connection fields separately. `PostgresConnectionStringResolver` uses `NpgsqlConnectionStringBuilder` to safely build the connection string, including passwords containing connection-string delimiter characters.
+
 Production environments should use an appropriate external secret-management solution.
 
 ## PostgreSQL
@@ -135,17 +137,20 @@ fluxpay.dead-letter
 
 Queues
 fluxpay.transfer-completed
-fluxpay.transfer-completed.retry.5s
-fluxpay.transfer-completed.retry.15s
-fluxpay.transfer-completed.retry.45s
+fluxpay.transfer-completed.retry.v1.attempt-1
+fluxpay.transfer-completed.retry.v1.attempt-2
+fluxpay.transfer-completed.retry.v1.attempt-3
 fluxpay.transfer-completed.dlq
 ```
+
+Retry queues use an explicit topology version and failed-attempt ordinal. Incompatible topology changes must increment the version; previous-version queues should then be drained and removed operationally.
+
 
 ## Migrator
 
 `fluxpay-migrator` is a Kubernetes Job that runs as non-root and applies EF Core migrations before API and Worker deployment.
 
-A fresh database applied all 7 migrations.
+A fresh database applied all available migrations.
 
 A second execution reported zero pending migrations, proving idempotent behavior.
 
@@ -176,7 +181,7 @@ Readiness also validates PostgreSQL connectivity.
 
 The Worker runs as one background-process replica.
 
-It has no fake HTTP probe because the application does not expose a Worker health endpoint. Kubernetes still restarts the container when the main process exits.
+The Worker exposes `/health/live` and `/health/ready`. Kubernetes uses startup, readiness and liveness probes against these endpoints. Readiness validates the dependencies required for asynchronous processing.
 
 The Worker handles Transactional Outbox polling, parallel publishing, RabbitMQ consumption, retries, dead-letter handling and Consumer Inbox persistence.
 
@@ -266,7 +271,7 @@ Worker       1/1
 PostgreSQL   1/1
 RabbitMQ     1/1
 Migrator     Complete
-Migrations   7
+Migrations   all applied
 ```
 
 The new database contained zero business records while retaining the full migrated schema.
@@ -377,6 +382,8 @@ O bootstrap lê `POSTGRES_PASSWORD` e `RABBITMQ_PASSWORD` da `.env` e cria o Sec
 
 `deploy/kubernetes/secret.example.yaml` contém apenas placeholders.
 
+Os workloads recebem os componentes da conexão PostgreSQL separadamente. O `PostgresConnectionStringResolver` utiliza `NpgsqlConnectionStringBuilder` para montar a connection string com escaping seguro, inclusive para senhas com caracteres especiais da sintaxe de connection strings.
+
 Em produção, deve-se usar uma solução apropriada de gerenciamento externo de segredos.
 
 ## PostgreSQL
@@ -405,17 +412,20 @@ fluxpay.dead-letter
 
 Filas
 fluxpay.transfer-completed
-fluxpay.transfer-completed.retry.5s
-fluxpay.transfer-completed.retry.15s
-fluxpay.transfer-completed.retry.45s
+fluxpay.transfer-completed.retry.v1.attempt-1
+fluxpay.transfer-completed.retry.v1.attempt-2
+fluxpay.transfer-completed.retry.v1.attempt-3
 fluxpay.transfer-completed.dlq
 ```
+
+As filas de retry usam uma versão explícita da topologia e o número ordinal da tentativa que falhou. Alterações incompatíveis devem incrementar a versão; as filas da versão anterior devem então ser drenadas e removidas operacionalmente.
+
 
 ## Migrator
 
 `fluxpay-migrator` é um Kubernetes Job não-root que aplica as migrations EF Core antes da implantação de API e Worker.
 
-Um banco novo aplicou as 7 migrations.
+Um banco novo aplicou todas as migrations disponíveis.
 
 Uma segunda execução encontrou zero migrations pendentes, confirmando comportamento idempotente.
 
@@ -446,7 +456,7 @@ O readiness também valida a conectividade com PostgreSQL.
 
 O Worker roda com uma réplica como processo de background.
 
-Não há probe HTTP artificial porque a aplicação não expõe endpoint de health do Worker. O Kubernetes continua reiniciando o container quando o processo principal encerra.
+O Worker expõe `/health/live` e `/health/ready`. O Kubernetes utiliza startup, readiness e liveness probes nesses endpoints. O readiness valida as dependências necessárias ao processamento assíncrono.
 
 O Worker executa polling do Transactional Outbox, publicação paralela, consumo RabbitMQ, retries, dead-letter handling e persistência do Consumer Inbox.
 
@@ -536,7 +546,7 @@ Worker       1/1
 PostgreSQL   1/1
 RabbitMQ     1/1
 Migrator     Complete
-Migrations   7
+Migrations   all applied
 ```
 
 O banco novo continha zero registros de negócio e o schema completo criado pelas migrations.
