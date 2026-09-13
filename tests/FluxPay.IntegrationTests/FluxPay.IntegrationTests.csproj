@@ -10,7 +10,9 @@
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="RabbitMQ.Client" Version="7.2.2" />
     <PackageReference Include="Testcontainers.PostgreSql" Version="4.15.0" />
+    <PackageReference Include="Testcontainers.RabbitMq" Version="4.15.0" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
   </ItemGroup>
@@ -20,6 +22,7 @@
     <ProjectReference Include="../../src/FluxPay.Application/FluxPay.Application.csproj" />
     <ProjectReference Include="../../src/FluxPay.Domain/FluxPay.Domain.csproj" />
     <ProjectReference Include="../../src/FluxPay.Infrastructure/FluxPay.Infrastructure.csproj" />
+    <ProjectReference Include="../../src/FluxPay.Worker/FluxPay.Worker.csproj" />
   </ItemGroup>
 
   <ItemGroup>
