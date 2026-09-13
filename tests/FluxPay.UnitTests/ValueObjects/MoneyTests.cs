@@ -42,4 +42,28 @@ public sealed class MoneyTests
             "Money amount cannot have more than two decimal places.",
             exception.Message);
     }
+
+    [Fact]
+    public void Constructor_WithMaximumAmount_ShouldSucceed()
+    {
+        var money =
+            new Money(
+                Money.MaximumAmount);
+
+        Assert.Equal(
+            Money.MaximumAmount,
+            money.Amount);
+    }
+
+    [Fact]
+    public void Constructor_WithAmountAboveMaximum_ShouldThrow()
+    {
+        Assert.Throws<
+            FluxPay.Domain.Common.DomainValidationException>(
+            () =>
+                new Money(
+                    Money.MaximumAmount
+                    + 0.01m));
+    }
+
 }

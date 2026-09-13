@@ -149,6 +149,70 @@ public sealed class AccountTests
         Assert.Equal(100m, account.Balance.Amount);
     }
 
+    [Fact]
+    public void Create_WithTooLongAccountNumber_ShouldThrow()
+    {
+        var accountNumber =
+            new string(
+                'A',
+                Account.MaximumAccountNumberLength
+                + 1);
+
+        Assert.Throws<DomainValidationException>(
+            () =>
+                Account.Create(
+                    accountNumber,
+                    "Ada Lovelace",
+                    Money.Zero,
+                    InitialTime));
+    }
+
+    [Fact]
+    public void Create_WithTooLongOwnerName_ShouldThrow()
+    {
+        var ownerName =
+            new string(
+                'A',
+                Account.MaximumOwnerNameLength
+                + 1);
+
+        Assert.Throws<DomainValidationException>(
+            () =>
+                Account.Create(
+                    "000123",
+                    ownerName,
+                    Money.Zero,
+                    InitialTime));
+    }
+
+    [Fact]
+    public void Credit_WhenResultExceedsMaximum_ShouldThrowAndPreserveBalance()
+    {
+        var originalBalance =
+            Money.MaximumAmount
+            - 1m;
+
+        var account =
+            CreateAccountWithBalance(
+                originalBalance);
+
+        Assert.Throws<DomainValidationException>(
+            () =>
+                account.Credit(
+                    new Money(
+                        2m),
+                    InitialTime.AddMinutes(
+                        1)));
+
+        Assert.Equal(
+            originalBalance,
+            account.Balance.Amount);
+
+        Assert.Equal(
+            InitialTime,
+            account.UpdatedAt);
+    }
+
     private static Account CreateAccountWithBalance(decimal balance)
     {
         return Account.Create(

@@ -190,4 +190,92 @@ public sealed class TraceContextHeadersTests
             expectedTraceState,
             extractedContext.TraceState);
     }
+
+    [Fact]
+    public void Inject_WithOversizedTraceState_DropsTraceStateButKeepsTraceParent()
+    {
+        var previousActivity =
+            System.Diagnostics.Activity.Current;
+
+        using var activity =
+            new System.Diagnostics.Activity(
+                "oversized-tracestate");
+
+        activity.SetIdFormat(
+            System.Diagnostics.ActivityIdFormat.W3C);
+
+        activity.TraceStateString =
+            new string(
+                'a',
+                513);
+
+        activity.Start();
+
+        try
+        {
+            var headers =
+                new Dictionary<string, object?>();
+
+            FluxPay.Infrastructure.Observability.TraceContextHeaders.Inject(
+                headers);
+
+            Assert.True(
+                headers.ContainsKey(
+                    FluxPay.Infrastructure.Observability.TraceContextHeaders.TraceParentHeaderName));
+
+            Assert.False(
+                headers.ContainsKey(
+                    FluxPay.Infrastructure.Observability.TraceContextHeaders.TraceStateHeaderName));
+        }
+        finally
+        {
+            activity.Stop();
+
+            System.Diagnostics.Activity.Current =
+                previousActivity;
+        }
+    }
+
+    [Fact]
+    public void TryExtract_WithOversizedTraceState_PreservesTraceParent()
+    {
+        const string traceParent =
+            "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+
+        var headers =
+            new Dictionary<string, object?>
+            {
+                [
+                    FluxPay.Infrastructure.Observability.TraceContextHeaders.TraceParentHeaderName
+                ] =
+                    System.Text.Encoding.UTF8.GetBytes(
+                        traceParent),
+
+                [
+                    FluxPay.Infrastructure.Observability.TraceContextHeaders.TraceStateHeaderName
+                ] =
+                    System.Text.Encoding.UTF8.GetBytes(
+                        new string(
+                            'a',
+                            513))
+            };
+
+        var extracted =
+            FluxPay.Infrastructure.Observability.TraceContextHeaders.TryExtract(
+                headers,
+                isRemote:
+                    true,
+                out var context);
+
+        Assert.True(
+            extracted);
+
+        Assert.Equal(
+            "4bf92f3577b34da6a3ce929d0e0e4736",
+            context.TraceId.ToHexString());
+
+        Assert.Null(
+            context.TraceState);
+    }
+
 }

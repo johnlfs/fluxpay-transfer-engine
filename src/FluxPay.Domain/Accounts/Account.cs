@@ -5,6 +5,12 @@ namespace FluxPay.Domain.Accounts;
 
 public sealed class Account
 {
+    public const int MaximumAccountNumberLength =
+        64;
+
+    public const int MaximumOwnerNameLength =
+        200;
+
     private Account(
         Guid id,
         string accountNumber,
@@ -50,10 +56,32 @@ public sealed class Account
                 "Account owner name is required.");
         }
 
+        var normalizedAccountNumber =
+            accountNumber.Trim();
+
+        var normalizedOwnerName =
+            ownerName.Trim();
+
+        if (
+            normalizedAccountNumber.Length
+            > MaximumAccountNumberLength)
+        {
+            throw new DomainValidationException(
+                $"Account number cannot exceed {MaximumAccountNumberLength} characters.");
+        }
+
+        if (
+            normalizedOwnerName.Length
+            > MaximumOwnerNameLength)
+        {
+            throw new DomainValidationException(
+                $"Account owner name cannot exceed {MaximumOwnerNameLength} characters.");
+        }
+
         return new Account(
             Guid.NewGuid(),
-            accountNumber.Trim(),
-            ownerName.Trim(),
+            normalizedAccountNumber,
+            normalizedOwnerName,
             initialBalance,
             createdAt.ToUniversalTime());
     }
@@ -77,8 +105,24 @@ public sealed class Account
     {
         EnsurePositiveTransactionAmount(amount);
 
-        Balance = new Money(Balance.Amount + amount.Amount);
-        UpdatedAt = occurredAt.ToUniversalTime();
+        var resultingBalance =
+            Balance.Amount
+            + amount.Amount;
+
+        if (
+            resultingBalance
+            > Money.MaximumAmount)
+        {
+            throw new DomainValidationException(
+                "Account balance exceeds the supported monetary range.");
+        }
+
+        Balance =
+            new Money(
+                resultingBalance);
+
+        UpdatedAt =
+            occurredAt.ToUniversalTime();
     }
 
     private static void EnsurePositiveTransactionAmount(Money amount)

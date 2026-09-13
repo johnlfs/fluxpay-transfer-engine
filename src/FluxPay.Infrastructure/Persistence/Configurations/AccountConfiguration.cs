@@ -26,6 +26,8 @@ public sealed class AccountConfiguration : IEntityTypeConfiguration<Account>
 
         builder.Property(account => account.AccountNumber)
             .HasColumnName("account_number")
+            .HasMaxLength(
+                Account.MaximumAccountNumberLength)
             .IsRequired();
 
         builder.HasIndex(account => account.AccountNumber)
@@ -34,6 +36,8 @@ public sealed class AccountConfiguration : IEntityTypeConfiguration<Account>
 
         builder.Property(account => account.OwnerName)
             .HasColumnName("owner_name")
+            .HasMaxLength(
+                Account.MaximumOwnerNameLength)
             .IsRequired();
 
         builder.Property(account => account.Balance)

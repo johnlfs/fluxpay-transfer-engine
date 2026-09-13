@@ -4,6 +4,9 @@ namespace FluxPay.Domain.ValueObjects;
 
 public readonly record struct Money
 {
+    public const decimal MaximumAmount =
+        99_999_999_999_999_999.99m;
+
     public Money(decimal amount)
     {
         if (amount < 0)
@@ -15,6 +18,12 @@ public readonly record struct Money
         {
             throw new DomainValidationException(
                 "Money amount cannot have more than two decimal places.");
+        }
+
+        if (amount > MaximumAmount)
+        {
+            throw new DomainValidationException(
+                "Money amount exceeds the supported numeric(19,2) range.");
         }
 
         Amount = amount;

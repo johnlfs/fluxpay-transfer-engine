@@ -8,6 +8,9 @@ namespace FluxPay.Infrastructure.Persistence.Outbox;
 public sealed class EfOutboxWriter
     : IOutboxWriter
 {
+    private const int MaximumTraceStateLength =
+        512;
+
     private static readonly JsonSerializerOptions SerializerOptions =
         new(
             JsonSerializerDefaults.Web);
@@ -135,11 +138,16 @@ public sealed class EfOutboxWriter
             return TraceContextSnapshot.Empty;
         }
 
+        var currentTraceState =
+            activity.TraceStateString;
+
         var traceState =
             string.IsNullOrWhiteSpace(
-                activity.TraceStateString)
+                currentTraceState)
+            || currentTraceState.Length
+                > MaximumTraceStateLength
                 ? null
-                : activity.TraceStateString;
+                : currentTraceState;
 
         return new TraceContextSnapshot(
             activity.Id,

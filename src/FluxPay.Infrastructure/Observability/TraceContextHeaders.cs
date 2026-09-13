@@ -39,9 +39,14 @@ public static class TraceContextHeaders
             Encoding.UTF8.GetBytes(
                 activity.Id);
 
+        var traceState =
+            activity.TraceStateString;
+
         if (
             string.IsNullOrWhiteSpace(
-                activity.TraceStateString))
+                traceState)
+            || traceState.Length
+                > MaximumHeaderLength)
         {
             headers.Remove(
                 TraceStateHeaderName);
@@ -53,7 +58,7 @@ public static class TraceContextHeaders
             TraceStateHeaderName
         ] =
             Encoding.UTF8.GetBytes(
-                activity.TraceStateString);
+                traceState);
     }
 
     public static bool TryExtract(
@@ -91,7 +96,8 @@ public static class TraceContextHeaders
             && traceState.Length
                 > MaximumHeaderLength)
         {
-            return false;
+            traceState =
+                null;
         }
 
         return ActivityContext.TryParse(

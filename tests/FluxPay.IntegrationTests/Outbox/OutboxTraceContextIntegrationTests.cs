@@ -142,6 +142,91 @@ public sealed class OutboxTraceContextIntegrationTests
     }
 
     [Fact]
+    public async Task AddAsync_WithOversizedTraceState_DropsTraceStateAndPersistsTraceParent()
+    {
+        var previousActivity =
+            Activity.Current;
+
+        using var activity =
+            new Activity(
+                "fluxpay.oversized-tracestate-test");
+
+        activity.SetIdFormat(
+            ActivityIdFormat.W3C);
+
+        activity.TraceStateString =
+            new string(
+                'a',
+                513);
+
+        activity.Start();
+
+        try
+        {
+            var expectedTraceParent =
+                activity.Id;
+
+            Assert.NotNull(
+                expectedTraceParent);
+
+            var eventId =
+                Guid.NewGuid();
+
+            await using (
+                var dbContext =
+                    Fixture.CreateDbContext())
+            {
+                await using var transaction =
+                    await dbContext.Database
+                        .BeginTransactionAsync();
+
+                var writer =
+                    new EfOutboxWriter(
+                        dbContext,
+                        TimeProvider.System);
+
+                await writer.AddAsync(
+                    eventId,
+                    "transfer.completed.v1",
+                    Guid.NewGuid(),
+                    new TestPayload(
+                        "oversized-tracestate"),
+                    OccurredAt);
+
+                await dbContext.SaveChangesAsync();
+
+                await transaction.CommitAsync();
+            }
+
+            await using var verificationContext =
+                Fixture.CreateDbContext();
+
+            var persisted =
+                await verificationContext
+                    .OutboxMessages
+                    .AsNoTracking()
+                    .SingleAsync(
+                        message =>
+                            message.Id
+                            == eventId);
+
+            Assert.Equal(
+                expectedTraceParent,
+                persisted.TraceParent);
+
+            Assert.Null(
+                persisted.TraceState);
+        }
+        finally
+        {
+            activity.Stop();
+
+            Activity.Current =
+                previousActivity;
+        }
+    }
+
+    [Fact]
     public async Task AddAsync_WithoutActiveActivity_PersistsNullTraceContext()
     {
         var previousActivity =
