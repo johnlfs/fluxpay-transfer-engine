@@ -26,9 +26,11 @@ public sealed class EfAccountRepository : IAccountRepository
         Guid accountId,
         CancellationToken cancellationToken = default)
     {
-        return _dbContext.Accounts.SingleOrDefaultAsync(
-            account => account.Id == accountId,
-            cancellationToken);
+        return _dbContext.Accounts
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
+                account => account.Id == accountId,
+                cancellationToken);
     }
 
     public async Task AddAsync(

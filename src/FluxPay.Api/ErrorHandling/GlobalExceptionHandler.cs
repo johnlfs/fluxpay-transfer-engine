@@ -84,7 +84,7 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
         }
 
         problemDetails.Instance =
-            httpContext.Request.Path;
+            $"{httpContext.Request.Path}{httpContext.Request.QueryString}";
 
         problemDetails.Extensions["traceId"] =
             httpContext.TraceIdentifier;

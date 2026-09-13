@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using FluxPay.Application.Abstractions.Messaging;
 using FluxPay.Application.Common.Time;
 using FluxPay.Infrastructure.Observability;
@@ -10,6 +11,10 @@ public sealed class OutboxProcessor
 {
     private const int MaximumErrorLength =
         4000;
+
+    private static readonly TimeSpan PublishTimeout =
+        TimeSpan.FromSeconds(
+            10);
 
     private readonly FluxPayDbContext _dbContext;
     private readonly IIntegrationEventPublisher _publisher;
@@ -170,12 +175,20 @@ public sealed class OutboxProcessor
 
             try
             {
+                using var publishCancellation =
+                    CancellationTokenSource
+                        .CreateLinkedTokenSource(
+                            cancellationToken);
+
+                publishCancellation.CancelAfter(
+                    PublishTimeout);
+
                 await _publisher.PublishAsync(
                     message.Id,
                     message.EventType,
                     message.AggregateId,
                     message.Payload,
-                    cancellationToken);
+                    publishCancellation.Token);
 
                 publishActivity?.SetStatus(
                     ActivityStatusCode.Ok);
@@ -363,7 +376,33 @@ public sealed class OutboxProcessor
             return value;
         }
 
-        return value[..MaximumErrorLength];
+        var enumerator =
+            StringInfo.GetTextElementEnumerator(
+                value);
+
+        var endIndex =
+            0;
+
+        while (enumerator.MoveNext())
+        {
+            var nextEndIndex =
+                enumerator.ElementIndex
+                + enumerator
+                    .GetTextElement()
+                    .Length;
+
+            if (
+                nextEndIndex
+                > MaximumErrorLength)
+            {
+                break;
+            }
+
+            endIndex =
+                nextEndIndex;
+        }
+
+        return value[..endIndex];
     }
 
     private enum OutboxMessageProcessingStatus

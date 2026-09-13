@@ -65,6 +65,9 @@ public sealed class EfOutboxWriter
                 nameof(eventType));
         }
 
+        ArgumentNullException.ThrowIfNull(
+            payload);
+
         var traceContext =
             CaptureTraceContext();
 

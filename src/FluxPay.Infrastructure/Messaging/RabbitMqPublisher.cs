@@ -292,8 +292,6 @@ public sealed class RabbitMqPublisher
             _operationLock.Release();
         }
 
-        _operationLock.Dispose();
-
         GC.SuppressFinalize(
             this);
     }

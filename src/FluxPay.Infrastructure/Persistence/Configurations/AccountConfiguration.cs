@@ -32,7 +32,8 @@ public sealed class AccountConfiguration : IEntityTypeConfiguration<Account>
 
         builder.HasIndex(account => account.AccountNumber)
             .IsUnique()
-            .HasDatabaseName("ux_accounts_account_number");
+            .HasDatabaseName(
+                AccountDatabaseNames.AccountNumberUniqueIndex);
 
         builder.Property(account => account.OwnerName)
             .HasColumnName("owner_name")

@@ -8,9 +8,6 @@ namespace FluxPay.Infrastructure.Persistence;
 
 public sealed class EfUnitOfWork : IUnitOfWork
 {
-    private const string AccountNumberUniqueIndex =
-        "ux_accounts_account_number";
-
     private readonly FluxPayDbContext _dbContext;
 
     public EfUnitOfWork(FluxPayDbContext dbContext)
@@ -33,7 +30,8 @@ public sealed class EfUnitOfWork : IUnitOfWork
                 && postgresException.SqlState
                     == PostgresErrorCodes.UniqueViolation
                 && postgresException.ConstraintName
-                    == AccountNumberUniqueIndex)
+                    == AccountDatabaseNames
+                        .AccountNumberUniqueIndex)
         {
             var account =
                 exception.Entries

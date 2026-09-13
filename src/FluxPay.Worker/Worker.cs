@@ -176,6 +176,8 @@ public sealed class Worker
         }
 
         return result.Candidates
-            < _options.BatchSize;
+                < _options.BatchSize
+            || result.Skipped
+                > 0;
     }
 }
