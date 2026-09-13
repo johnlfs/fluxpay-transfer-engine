@@ -321,6 +321,26 @@ RabbitMQ is intentionally not part of API readiness because the Transactional Ou
 
 ---
 
+## Resilience and Fault Injection
+
+FluxPay was also validated by deliberately interrupting PostgreSQL, RabbitMQ and application pods in the Kubernetes environment.
+
+Observed scenarios include:
+
+- RabbitMQ outage with successful financial commit and deferred Outbox publication;
+- PostgreSQL outage causing readiness failure and no partial financial state;
+- consumer retries at 5s, 15s and 45s followed by DLQ on attempt 4;
+- healthy message processing after a failed message was isolated in the DLQ;
+- in-flight consumer recovery after Worker loss under at-least-once delivery;
+- transactional rollback after an interrupted API operation;
+- safe client retry with the same `Idempotency-Key` after an uncertain/lost response.
+
+These experiments distinguish liveness from readiness and document the system's actual failure semantics rather than claiming exactly-once messaging.
+
+For the full experiment matrix, observed evidence, limitations and Kubernetes force-delete nuance, see [the resilience and fault-injection report](docs/resilience/resilience-and-fault-injection.md).
+
+---
+
 ## Performance Engineering
 
 Performance tests are implemented with Grafana k6.
@@ -620,6 +640,7 @@ For manifests, architecture, persistence tests, E2E evidence and production cons
 
     docs/
       performance/
+      resilience/
 
     .github/
       workflows/
@@ -651,7 +672,8 @@ FluxPay demonstrates practical implementation of:
 - dedicated database migration lifecycle;
 - automated integration testing;
 - architectural dependency testing;
-- CI automation.
+- CI automation;
+- resilience and fault-injection validation.
 
 ---
 
@@ -873,6 +895,26 @@ A API não depende diretamente da disponibilidade imediata do RabbitMQ porque o 
 
 ---
 
+## Resiliência e Fault Injection
+
+FluxPay também foi validado interrompendo deliberadamente PostgreSQL, RabbitMQ e Pods da aplicação no ambiente Kubernetes.
+
+Cenários observados incluem:
+
+- indisponibilidade do RabbitMQ com commit financeiro e publicação posterior pelo Outbox;
+- indisponibilidade do PostgreSQL com falha de readiness e ausência de estado financeiro parcial;
+- retries do consumer em 5s, 15s e 45s, seguidos de DLQ na tentativa 4;
+- processamento normal de uma mensagem saudável após isolamento da mensagem problemática na DLQ;
+- recuperação de entrega em voo após perda do Worker sob semântica at-least-once;
+- rollback transacional após interrupção de uma operação na API;
+- retry seguro do cliente com a mesma `Idempotency-Key` após resposta incerta/perdida.
+
+Os experimentos distinguem liveness de readiness e registram as semânticas reais de falha do sistema, sem alegar exactly-once messaging.
+
+Para a matriz completa de experimentos, evidências observadas, limitações e a nuance de force-delete no Kubernetes, consulte o [relatório de resiliência e fault injection](docs/resilience/resilience-and-fault-injection.md).
+
+---
+
 ## Performance
 
 Os testes utilizam Grafana k6.
@@ -1068,6 +1110,7 @@ Para manifests, arquitetura, testes de persistência, evidências E2E e consider
 
     docs/
       performance/
+      resilience/
 
     .github/
       workflows/
@@ -1100,7 +1143,8 @@ FluxPay demonstra na prática:
 - Docker;
 - database migration lifecycle;
 - GitHub Actions;
-- CI automatizado.
+- CI automatizado;
+- validação de resiliência e fault injection.
 
 O objetivo não é apenas atingir um número alto de requests por segundo.
 
