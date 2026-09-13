@@ -1,5 +1,7 @@
 # FluxPay Transfer Engine
 
+[![CI](https://github.com/johnlfs/fluxpay-transfer-engine/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/johnlfs/fluxpay-transfer-engine/actions/workflows/ci.yml) [![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4)](https://dotnet.microsoft.com/) [![Kubernetes](https://img.shields.io/badge/Kubernetes-ready-326CE5?logo=kubernetes&logoColor=white)](https://kubernetes.io/) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 High-integrity money transfer engine built with .NET 10, PostgreSQL and RabbitMQ.
 
 FluxPay is a backend engineering portfolio project focused on transactional consistency, idempotency, concurrent money movement, reliable event delivery, observability, distributed tracing, performance analysis and containerized deployment.
@@ -26,6 +28,15 @@ A transfer must:
 - remain observable across asynchronous boundaries.
 
 The system combines a synchronous transactional command path with an asynchronous event pipeline based on Transactional Outbox and Transactional Inbox patterns.
+
+---
+
+## Quick Evidence
+
+- [Performance Engineering](docs/performance/k6-baseline.md) — reproducible k6 baselines, bottleneck analysis and measured Outbox parallelism.
+- [Resilience and Fault Injection](docs/resilience/resilience-and-fault-injection.md) — observed behavior under RabbitMQ/PostgreSQL outages, retries, DLQ, Worker loss and interrupted API transactions.
+- [Kubernetes Deployment](deploy/kubernetes/README.md) — reproducible kind/Kustomize deployment with persistence, migrations, health checks and E2E validation.
+- [Continuous Integration](https://github.com/johnlfs/fluxpay-transfer-engine/actions/workflows/ci.yml) — build, unit/integration/architecture tests, Docker Compose validation and server-side Kubernetes manifest validation.
 
 ---
 
@@ -699,6 +710,15 @@ Uma transferência no FluxPay deve:
 - funcionar corretamente sob concorrência;
 - gerar eventos de integração confiáveis;
 - permanecer observável mesmo atravessando processamento assíncrono.
+
+---
+
+## Evidências Rápidas
+
+- [Engenharia de Performance](docs/performance/k6-baseline.md) — baselines reproduzíveis com k6, análise de gargalos e paralelismo do Outbox medido.
+- [Resiliência e Fault Injection](docs/resilience/resilience-and-fault-injection.md) — comportamento observado em falhas de RabbitMQ/PostgreSQL, retries, DLQ, perda do Worker e interrupção de transação na API.
+- [Deploy Kubernetes](deploy/kubernetes/README.md) — ambiente reproduzível com kind/Kustomize, persistência, migrations, health checks e validação E2E.
+- [Integração Contínua](https://github.com/johnlfs/fluxpay-transfer-engine/actions/workflows/ci.yml) — build, testes unitários/de integração/de arquitetura, validação do Docker Compose e validação server-side dos manifests Kubernetes.
 
 ---
 
