@@ -536,17 +536,10 @@ public sealed class RabbitMqConsumerIntegrationFixture
         TransferCompletedConsumerOptions consumerOptions,
         int failedAttemptCount)
     {
-        var delay =
-            ConsumerRetryPolicy.GetDelay(
-                failedAttemptCount);
-
-        var totalSeconds =
-            checked(
-                (int)
-                    delay.TotalSeconds);
-
         return
-            $"{consumerOptions.QueueName}.retry.{totalSeconds}s";
+            $"{consumerOptions.QueueName}.retry."
+            + $"{TransferCompletedConsumerOptions.RetryTopologyVersion}."
+            + $"attempt-{failedAttemptCount}";
     }
 
     public async Task EnableInboxInsertFailureAsync()

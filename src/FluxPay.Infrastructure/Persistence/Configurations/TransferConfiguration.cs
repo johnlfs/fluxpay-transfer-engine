@@ -26,24 +26,13 @@ public sealed class TransferConfiguration
 
                 tableBuilder.HasCheckConstraint(
                     "ck_transfers_valid_status",
-                    "status IN ('Pending', 'Completed', 'Rejected')");
+                    "status IN ('Pending', 'Completed')");
 
                 tableBuilder.HasCheckConstraint(
                     "ck_transfers_status_consistency",
-                    "(" +
-                    "status = 'Pending' " +
-                    "AND finalized_at IS NULL " +
-                    "AND rejection_reason IS NULL" +
-                    ") OR (" +
-                    "status = 'Completed' " +
-                    "AND finalized_at IS NOT NULL " +
-                    "AND rejection_reason IS NULL" +
-                    ") OR (" +
-                    "status = 'Rejected' " +
-                    "AND finalized_at IS NOT NULL " +
-                    "AND rejection_reason IS NOT NULL " +
-                    "AND btrim(rejection_reason) <> ''" +
-                    ")");
+                    "(status = 'Pending' AND finalized_at IS NULL) " +
+                    "OR " +
+                    "(status = 'Completed' AND finalized_at IS NOT NULL)");
             });
 
         builder.HasKey(
@@ -91,9 +80,6 @@ public sealed class TransferConfiguration
             .HasColumnName("finalized_at")
             .HasColumnType("timestamp with time zone");
 
-        builder.Property(
-                transfer => transfer.RejectionReason)
-            .HasColumnName("rejection_reason");
 
         builder.HasOne<Account>()
             .WithMany()

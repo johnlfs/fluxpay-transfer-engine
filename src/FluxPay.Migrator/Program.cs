@@ -1,17 +1,21 @@
 using FluxPay.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
-const string connectionStringEnvironmentVariable =
-    "FLUXPAY_DB_CONNECTION";
+string connectionString;
 
-var connectionString =
-    Environment.GetEnvironmentVariable(
-        connectionStringEnvironmentVariable);
-
-if (string.IsNullOrWhiteSpace(connectionString))
+try
+{
+    connectionString =
+        PostgresConnectionStringResolver.Resolve(
+            Environment.GetEnvironmentVariable);
+}
+catch (Exception exception)
 {
     Console.Error.WriteLine(
-        $"Environment variable '{connectionStringEnvironmentVariable}' is required.");
+        "FluxPay database configuration is invalid.");
+
+    Console.Error.WriteLine(
+        $"{exception.GetType().FullName}: {exception.Message}");
 
     return 1;
 }

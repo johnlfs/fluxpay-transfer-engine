@@ -34,7 +34,6 @@ public sealed class Transfer
 
     public DateTimeOffset? FinalizedAt { get; private set; }
 
-    public string? RejectionReason { get; private set; }
 
     public static Transfer Create(
         Guid sourceAccountId,
@@ -81,24 +80,6 @@ public sealed class Transfer
 
         Status = TransferStatus.Completed;
         FinalizedAt = finalizedAt.ToUniversalTime();
-        RejectionReason = null;
-    }
-
-    public void Reject(
-        string reason,
-        DateTimeOffset finalizedAt)
-    {
-        EnsurePending();
-
-        if (string.IsNullOrWhiteSpace(reason))
-        {
-            throw new DomainValidationException(
-                "Transfer rejection reason is required.");
-        }
-
-        Status = TransferStatus.Rejected;
-        FinalizedAt = finalizedAt.ToUniversalTime();
-        RejectionReason = reason.Trim();
     }
 
     private void EnsurePending()

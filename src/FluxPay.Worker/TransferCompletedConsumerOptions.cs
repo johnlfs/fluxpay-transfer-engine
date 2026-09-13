@@ -5,6 +5,9 @@ public sealed class TransferCompletedConsumerOptions
     public const string SectionName =
         "TransferCompletedConsumer";
 
+    public const string RetryTopologyVersion =
+        "v1";
+
     public const string DefaultConsumerName =
         "transfer-completed-consumer";
 

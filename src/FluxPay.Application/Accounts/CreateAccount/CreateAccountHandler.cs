@@ -10,11 +10,13 @@ public sealed class CreateAccountHandler
 {
     private readonly IAccountRepository _accountRepository;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly ITransactionManager _transactionManager;
     private readonly TimeProvider _timeProvider;
 
     public CreateAccountHandler(
         IAccountRepository accountRepository,
         IUnitOfWork unitOfWork,
+        ITransactionManager transactionManager,
         TimeProvider timeProvider)
     {
         _accountRepository =
@@ -22,6 +24,9 @@ public sealed class CreateAccountHandler
 
         _unitOfWork =
             unitOfWork;
+
+        _transactionManager =
+            transactionManager;
 
         _timeProvider =
             timeProvider;
@@ -40,29 +45,35 @@ public sealed class CreateAccountHandler
                 UtcTimestamp.GetUtcNow(
                     _timeProvider));
 
-        var accountNumberAlreadyExists =
-            await _accountRepository.ExistsByAccountNumberAsync(
-                account.AccountNumber,
-                cancellationToken);
+        return await _transactionManager.ExecuteAsync(
+            async transactionCancellationToken =>
+            {
+                var accountNumberAlreadyExists =
+                    await _accountRepository
+                        .ExistsByAccountNumberAsync(
+                            account.AccountNumber,
+                            transactionCancellationToken);
 
-        if (accountNumberAlreadyExists)
-        {
-            throw new AccountNumberAlreadyExistsException(
-                account.AccountNumber);
-        }
+                if (accountNumberAlreadyExists)
+                {
+                    throw new AccountNumberAlreadyExistsException(
+                        account.AccountNumber);
+                }
 
-        await _accountRepository.AddAsync(
-            account,
+                await _accountRepository.AddAsync(
+                    account,
+                    transactionCancellationToken);
+
+                await _unitOfWork.SaveChangesAsync(
+                    transactionCancellationToken);
+
+                return new CreateAccountResult(
+                    account.Id,
+                    account.AccountNumber,
+                    account.OwnerName,
+                    account.Balance.Amount,
+                    account.CreatedAt);
+            },
             cancellationToken);
-
-        await _unitOfWork.SaveChangesAsync(
-            cancellationToken);
-
-        return new CreateAccountResult(
-            account.Id,
-            account.AccountNumber,
-            account.OwnerName,
-            account.Balance.Amount,
-            account.CreatedAt);
     }
 }

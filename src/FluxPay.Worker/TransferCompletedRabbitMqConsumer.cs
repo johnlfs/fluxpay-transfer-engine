@@ -334,11 +334,11 @@ public sealed class TransferCompletedRabbitMqConsumer
 
             var retryQueueName =
                 GetRetryQueueName(
-                    delay);
+                    attemptCount);
 
             var retryRoutingKey =
                 GetRetryRoutingKey(
-                    delay);
+                    attemptCount);
 
             var retryQueueArguments =
                 new Dictionary<string, object?>
@@ -654,7 +654,7 @@ public sealed class TransferCompletedRabbitMqConsumer
 
         var retryRoutingKey =
             GetRetryRoutingKey(
-                delay);
+                failedAttemptCount);
 
         var headers =
             eventArgs.BasicProperties.Headers is null
@@ -1142,29 +1142,21 @@ public sealed class TransferCompletedRabbitMqConsumer
     }
 
     private string GetRetryQueueName(
-        TimeSpan delay)
+        int failedAttemptCount)
     {
         return
-            $"{_consumerOptions.QueueName}.retry.{GetDelayName(delay)}";
+            $"{_consumerOptions.QueueName}.retry."
+            + $"{TransferCompletedConsumerOptions.RetryTopologyVersion}."
+            + $"attempt-{failedAttemptCount}";
     }
 
     private static string GetRetryRoutingKey(
-        TimeSpan delay)
+        int failedAttemptCount)
     {
         return
-            $"{TransferCompletedIntegrationEvent.EventType}.retry.{GetDelayName(delay)}";
-    }
-
-    private static string GetDelayName(
-        TimeSpan delay)
-    {
-        var totalSeconds =
-            checked(
-                (int)
-                    delay.TotalSeconds);
-
-        return
-            $"{totalSeconds}s";
+            $"{TransferCompletedIntegrationEvent.EventType}.retry."
+            + $"{TransferCompletedConsumerOptions.RetryTopologyVersion}."
+            + $"attempt-{failedAttemptCount}";
     }
 
     private async Task<bool> TryNackAsync(

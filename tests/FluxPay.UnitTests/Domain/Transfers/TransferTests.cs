@@ -46,7 +46,6 @@ public sealed class TransferTests
             createdAt,
             transfer.CreatedAt);
         Assert.Null(transfer.FinalizedAt);
-        Assert.Null(transfer.RejectionReason);
     }
 
     [Fact]
@@ -144,8 +143,6 @@ public sealed class TransferTests
         Assert.Equal(
             finalizedAt,
             transfer.FinalizedAt);
-        Assert.Null(
-            transfer.RejectionReason);
     }
 
     [Fact]
@@ -166,88 +163,6 @@ public sealed class TransferTests
         Assert.Equal(
             "Transfer cannot be changed when its status is 'Completed'.",
             exception.Message);
-    }
-
-    [Fact]
-    public void Reject_WhenPending_MarksTransferAsRejected()
-    {
-        var transfer =
-            CreatePendingTransfer();
-
-        var finalizedAt =
-            new DateTimeOffset(
-                2026,
-                9,
-                11,
-                3,
-                10,
-                0,
-                TimeSpan.Zero);
-
-        transfer.Reject(
-            "  Insufficient funds  ",
-            finalizedAt);
-
-        Assert.Equal(
-            TransferStatus.Rejected,
-            transfer.Status);
-        Assert.Equal(
-            finalizedAt,
-            transfer.FinalizedAt);
-        Assert.Equal(
-            "Insufficient funds",
-            transfer.RejectionReason);
-    }
-
-    [Fact]
-    public void Reject_WithBlankReason_ThrowsAndPreservesPendingState()
-    {
-        var transfer =
-            CreatePendingTransfer();
-
-        var exception =
-            Assert.Throws<DomainValidationException>(
-                () =>
-                    transfer.Reject(
-                        "   ",
-                        DateTimeOffset.UtcNow));
-
-        Assert.Equal(
-            "Transfer rejection reason is required.",
-            exception.Message);
-
-        Assert.Equal(
-            TransferStatus.Pending,
-            transfer.Status);
-        Assert.Null(
-            transfer.FinalizedAt);
-        Assert.Null(
-            transfer.RejectionReason);
-    }
-
-    [Fact]
-    public void Reject_WhenAlreadyCompleted_ThrowsDomainValidationException()
-    {
-        var transfer =
-            CreatePendingTransfer();
-
-        transfer.Complete(
-            DateTimeOffset.UtcNow);
-
-        var exception =
-            Assert.Throws<DomainValidationException>(
-                () =>
-                    transfer.Reject(
-                        "Should not be possible",
-                        DateTimeOffset.UtcNow));
-
-        Assert.Equal(
-            "Transfer cannot be changed when its status is 'Completed'.",
-            exception.Message);
-
-        Assert.Equal(
-            TransferStatus.Completed,
-            transfer.Status);
     }
 
     private static Transfer CreatePendingTransfer()

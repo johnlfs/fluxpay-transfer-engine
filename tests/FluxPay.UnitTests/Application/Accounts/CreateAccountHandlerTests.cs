@@ -27,6 +27,7 @@ public sealed class CreateAccountHandlerTests
         var handler = new CreateAccountHandler(
             repository,
             unitOfWork,
+            new FakeTransactionManager(),
             new FixedTimeProvider(fixedTime));
 
         var command = new CreateAccountCommand(
@@ -61,6 +62,7 @@ public sealed class CreateAccountHandlerTests
         var handler = new CreateAccountHandler(
             repository,
             unitOfWork,
+            new FakeTransactionManager(),
             new FixedTimeProvider(DateTimeOffset.UtcNow));
 
         var command = new CreateAccountCommand(
@@ -91,6 +93,7 @@ public sealed class CreateAccountHandlerTests
         var handler = new CreateAccountHandler(
             repository,
             unitOfWork,
+            new FakeTransactionManager(),
             new FixedTimeProvider(DateTimeOffset.UtcNow));
 
         var command = new CreateAccountCommand(
@@ -114,6 +117,7 @@ public sealed class CreateAccountHandlerTests
         var handler = new CreateAccountHandler(
             repository,
             unitOfWork,
+            new FakeTransactionManager(),
             new FixedTimeProvider(DateTimeOffset.UtcNow));
 
         var command = new CreateAccountCommand(
@@ -172,6 +176,18 @@ public sealed class CreateAccountHandlerTests
             AddedAccount = account;
 
             return Task.CompletedTask;
+        }
+    }
+
+    private sealed class FakeTransactionManager
+        : ITransactionManager
+    {
+        public Task<T> ExecuteAsync<T>(
+            Func<CancellationToken, Task<T>> operation,
+            CancellationToken cancellationToken = default)
+        {
+            return operation(
+                cancellationToken);
         }
     }
 

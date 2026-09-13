@@ -72,15 +72,6 @@ spec:
                   name: fluxpay-secrets
                   key: POSTGRES_PASSWORD
 
-            - name: FLUXPAY_DB_CONNECTION
-              value: >-
-                Host=$(POSTGRES_HOST);
-                Port=$(POSTGRES_PORT);
-                Database=$(POSTGRES_DB);
-                Username=$(POSTGRES_USER);
-                Password=$(POSTGRES_PASSWORD);
-                Include Error Detail=false
-
           resources:
             requests:
               cpu: 50m

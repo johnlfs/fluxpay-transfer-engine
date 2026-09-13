@@ -14,27 +14,31 @@ using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 
-static string RequiredEnvironmentVariable(
+var builder =
+    WebApplication.CreateBuilder(
+        args);
+
+string RequiredConfigurationValue(
     string name)
 {
     var value =
-        Environment.GetEnvironmentVariable(
-            name);
+        builder.Configuration[
+            name];
 
     if (string.IsNullOrWhiteSpace(value))
     {
         throw new InvalidOperationException(
-            $"Environment variable '{name}' is required.");
+            $"Configuration value '{name}' is required.");
     }
 
     return value;
 }
 
-static int RequiredIntegerEnvironmentVariable(
+int RequiredIntegerConfigurationValue(
     string name)
 {
     var value =
-        RequiredEnvironmentVariable(
+        RequiredConfigurationValue(
             name);
 
     if (
@@ -43,56 +47,43 @@ static int RequiredIntegerEnvironmentVariable(
             out var parsed))
     {
         throw new InvalidOperationException(
-            $"Environment variable '{name}' must contain a valid integer.");
+            $"Configuration value '{name}' must contain a valid integer.");
     }
 
     return parsed;
 }
-
-var builder =
-    WebApplication.CreateBuilder(
-        args);
 
 var otlpEndpoint =
     builder.Configuration[
         "OTEL_EXPORTER_OTLP_ENDPOINT"];
 
 var connectionString =
-    Environment.GetEnvironmentVariable(
-        "FLUXPAY_DB_CONNECTION");
-
-if (string.IsNullOrWhiteSpace(connectionString))
-{
-    connectionString =
-        $"Host=127.0.0.1;"
-        + $"Port={RequiredEnvironmentVariable("POSTGRES_PORT")};"
-        + $"Database={RequiredEnvironmentVariable("POSTGRES_DB")};"
-        + $"Username={RequiredEnvironmentVariable("POSTGRES_USER")};"
-        + $"Password={RequiredEnvironmentVariable("POSTGRES_PASSWORD")};"
-        + "Include Error Detail=false";
-}
+    PostgresConnectionStringResolver.Resolve(
+        key =>
+            builder.Configuration[
+                key]);
 
 var rabbitMqOptions =
     new RabbitMqOptions
     {
         HostName =
-            RequiredEnvironmentVariable(
+            RequiredConfigurationValue(
                 "RABBITMQ_HOST"),
 
         Port =
-            RequiredIntegerEnvironmentVariable(
+            RequiredIntegerConfigurationValue(
                 "RABBITMQ_PORT"),
 
         UserName =
-            RequiredEnvironmentVariable(
+            RequiredConfigurationValue(
                 "RABBITMQ_USER"),
 
         Password =
-            RequiredEnvironmentVariable(
+            RequiredConfigurationValue(
                 "RABBITMQ_PASSWORD"),
 
         VirtualHost =
-            RequiredEnvironmentVariable(
+            RequiredConfigurationValue(
                 "RABBITMQ_VHOST"),
 
         ExchangeName =

@@ -21,14 +21,10 @@ var otlpEndpoint =
         "OTEL_EXPORTER_OTLP_ENDPOINT"];
 
 var connectionString =
-    builder.Configuration[
-        "FLUXPAY_DB_CONNECTION"];
-
-if (string.IsNullOrWhiteSpace(connectionString))
-{
-    throw new InvalidOperationException(
-        "Environment variable 'FLUXPAY_DB_CONNECTION' is required.");
-}
+    PostgresConnectionStringResolver.Resolve(
+        key =>
+            builder.Configuration[
+                key]);
 
 builder.Services.AddControllers();
 
