@@ -31,7 +31,7 @@ RUN dotnet publish \
     /p:UseAppHost=false
 
 
-FROM mcr.microsoft.com/dotnet/runtime:10.0 AS final
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 
 WORKDIR /app
 
@@ -42,6 +42,8 @@ RUN apt-get update \
 
 ENV DOTNET_NOLOGO=true \
     DOTNET_CLI_TELEMETRY_OPTOUT=true
+
+EXPOSE 8080
 
 COPY --from=build \
      --chown=app:app \

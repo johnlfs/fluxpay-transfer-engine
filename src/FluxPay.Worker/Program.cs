@@ -3,9 +3,13 @@ using FluxPay.Application.Messaging.Inbox;
 using FluxPay.Infrastructure;
 using FluxPay.Infrastructure.Messaging;
 using FluxPay.Infrastructure.Observability;
+using FluxPay.Infrastructure.Persistence;
 using FluxPay.Infrastructure.Persistence.Outbox;
 using FluxPay.Worker;
+using FluxPay.Worker.Health;
 using FluxPay.Worker.Observability;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
@@ -46,7 +50,7 @@ static int RequiredIntegerEnvironmentVariable(
 }
 
 var builder =
-    Host.CreateApplicationBuilder(
+    WebApplication.CreateBuilder(
         args);
 
 var connectionString =
@@ -210,6 +214,23 @@ builder.Services.AddScoped<
     InboxMessageProcessor>();
 
 builder.Services
+    .AddHealthChecks()
+    .AddDbContextCheck<FluxPayDbContext>(
+        name:
+            "postgresql",
+        tags:
+            [
+                "ready"
+            ])
+    .AddCheck<RabbitMqHealthCheck>(
+        name:
+            "rabbitmq",
+        tags:
+            [
+                "ready"
+            ]);
+
+builder.Services
     .AddOpenTelemetry()
     .ConfigureResource(
         resource =>
@@ -242,7 +263,26 @@ builder.Services.AddHostedService<
 builder.Services.AddHostedService<
     TransferCompletedRabbitMqConsumer>();
 
-var host =
+var app =
     builder.Build();
 
-await host.RunAsync();
+app.MapHealthChecks(
+    "/health/live",
+    new HealthCheckOptions
+    {
+        Predicate =
+            _ =>
+                false
+    });
+
+app.MapHealthChecks(
+    "/health/ready",
+    new HealthCheckOptions
+    {
+        Predicate =
+            registration =>
+                registration.Tags.Contains(
+                    "ready")
+    });
+
+await app.RunAsync();

@@ -42,6 +42,11 @@ spec:
           image: fluxpay-worker:local
           imagePullPolicy: IfNotPresent
 
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+
           securityContext:
             allowPrivilegeEscalation: false
 
@@ -121,6 +126,33 @@ spec:
                 configMapKeyRef:
                   name: fluxpay-config
                   key: RABBITMQ_VHOST
+
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: http
+
+            periodSeconds: 3
+            timeoutSeconds: 3
+            failureThreshold: 20
+
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
 
           resources:
             requests:
