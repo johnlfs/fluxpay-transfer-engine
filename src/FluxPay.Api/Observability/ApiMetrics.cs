@@ -20,6 +20,15 @@ public static class ApiMetrics
             description:
                 "Number of successfully handled transfer execution requests.");
 
+    private static readonly Counter<long> TransferFailures =
+        Meter.CreateCounter<long>(
+            name:
+                "fluxpay.transfer.failures",
+            unit:
+                "{transfer}",
+            description:
+                "Number of failed transfer execution requests.");
+
     public static void RecordTransferExecution(
         bool isReplay)
     {
@@ -28,5 +37,15 @@ public static class ApiMetrics
             new KeyValuePair<string, object?>(
                 "replay",
                 isReplay));
+    }
+
+    public static void RecordTransferFailure(
+        int statusCode)
+    {
+        TransferFailures.Add(
+            1,
+            new KeyValuePair<string, object?>(
+                "status_code",
+                statusCode));
     }
 }

@@ -126,6 +126,9 @@ builder.Services
 var app =
     builder.Build();
 
+app.UseMiddleware<
+    TransferMetricsMiddleware>();
+
 app.UseExceptionHandler();
 
 app.UseStatusCodePages();
